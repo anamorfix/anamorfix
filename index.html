@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WCBL CSAT/NPS Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #d4c9b2; min-height: 100vh; padding: 24px 16px; font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+    .title { font-size: 11px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #666; }
+    .team-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 980px; }
+    .team-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 75px; padding: 6px 4px; background: white; border: 2px solid transparent; border-radius: 6px; cursor: pointer; transition: all 0.15s; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    .team-tile:hover { transform: translateY(-2px); box-shadow: 0 3px 10px rgba(0,0,0,0.15); }
+    .team-tile.active { border-color: #111; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+    .team-logo { width: 42px; height: 42px; }
+    .team-name { font-size: 8px; font-weight: 700; text-align: center; color: #222; line-height: 1.2; }
+    .card { width: 100%; max-width: 980px; background: #f2ece0; box-shadow: 0 8px 32px rgba(0,0,0,0.3); overflow: hidden; }
+    .header { background: #111; display: flex; align-items: center; padding: 24px 28px; gap: 20px; min-height: 150px; }
+    .score-block { min-width: 80px; }
+    .csat-num { display: block; font-family: 'Arial Black', Impact, sans-serif; font-size: 78px; font-weight: 900; color: #fff; line-height: 0.85; letter-spacing: -3px; }
+    .csat-label { display: block; font-size: 10px; color: #888; letter-spacing: 2px; margin-top: 4px; }
+    .divider { width: 2px; height: 85px; background: #2e2e2e; flex-shrink: 0; }
+    .team-title { flex: 1; font-family: 'Arial Black', Impact, sans-serif; font-size: 44px; font-weight: 900; color: #fff; line-height: 1; text-transform: uppercase; letter-spacing: -1px; }
+    .logo-circle { width: 120px; height: 120px; border-radius: 50%; overflow: hidden; flex-shrink: 0; box-shadow: 0 0 0 3px rgba(255,255,255,0.12); }
+    .logo-circle svg { width: 100%; height: 100%; }
+    .tabs { display: flex; gap: 6px; padding: 10px 16px 0; }
+    .tab { padding: 5px 16px; border-radius: 20px; border: none; font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; cursor: pointer; background: #d8cfbf; color: #555; transition: all 0.12s; }
+    .tab.active { background: #c8191a; color: white; }
+    .table-wrap { padding: 0 16px; margin-top: 6px; }
+    .scroll { max-height: 280px; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th { font-size: 11px; font-weight: 800; text-align: center; padding: 7px 8px; letter-spacing: 0.5px; color: #111; position: sticky; top: 0; background: #f2ece0; border-bottom: 2px solid #b8b0a0; z-index: 1; }
+    th.vs { text-align: left; }
+    tbody td { padding: 7px 8px; text-align: center; font-size: 13px; font-weight: 600; color: #111; border-bottom: 1px solid rgba(0,0,0,0.08); }
+    td.vs { text-align: left; font-size: 11px; font-weight: 700; }
+    tbody tr.hi td { background: #c8191a; color: white; }
+    .overall { border-top: 2px solid #a8a090; margin-top: 2px; }
+    .overall td { padding: 8px 8px; font-weight: 800; }
+    .footer { background: #111; display: flex; align-items: center; gap: 12px; padding: 12px 18px; margin-top: 4px; }
+    .footer-logo { flex-shrink: 0; width: 40px; height: 40px; }
+    .footer-text { flex: 1; color: #aaa; font-size: 8.5px; line-height: 1.7; }
+    .footer-ix { display: flex; align-items: center; gap: 4px; flex-shrink: 0; color: white; font-size: 13px; font-weight: 700; }
+    .ix-x { font-size: 18px; font-weight: 900; }
+  </style>
+</head>
+<body>
+
+<div class="title">WCBL Fan Experience — CSAT / NPS Dashboard</div>
+<div class="team-grid" id="teams"></div>
+
+<div class="card">
+  <div class="header">
+    <div class="score-block">
+      <span class="csat-num" id="csat">84</span>
+      <span class="csat-label">CSAT%</span>
+    </div>
+    <div class="divider"></div>
+    <div class="team-title" id="team"></div>
+    <div class="logo-circle" id="logo"></div>
+  </div>
+  <div class="tabs">
+    <button class="tab active" id="h" onclick="tab('h')">HOME</button>
+    <button class="tab" id="a" onclick="tab('a')">AWAY</button>
+  </div>
+  <div class="table-wrap">
+    <div class="scroll">
+      <table>
+        <thead><tr><th>G#</th><th class="vs">VS</th><th>DATE</th><th>N</th><th>RT</th><th>A</th><th>V</th><th>S</th><th>F</th><th>NPS</th></tr></thead>
+        <tbody id="body"></tbody>
+      </table>
+    </div>
+    <div class="overall">
+      <table><tbody><tr id="ov"></tr></tbody></table>
+    </div>
+  </div>
+  <div class="footer">
+    <svg class="footer-logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="50" cy="50" r="47" fill="#cc1111"/><circle cx="50" cy="50" r="39" fill="white"/>
+      <path d="M50 17 L53 29 L66 25 L58 36 L73 35 L64 44 L74 49 L63 51 L67 64 L55 59 L57 73 L50 67 L43 73 L45 59 L33 64 L37 51 L26 49 L36 44 L27 35 L42 36 L34 25 L47 29 Z" fill="#cc1111"/>
+      <rect x="46" y="67" width="8" height="12" fill="#cc1111"/>
+    </svg>
+    <div class="footer-text">All scores represent 100-point percentage (%)<br>NPS calculated on [%rating 9-10]−[%rating 0-6] on q8 recommendation</div>
+    <div class="footer-ix"><span class="ix-x">✕</span>insightrix</div>
+  </div>
+</div>
+
+<script>
+const TEAMS = [
+  {id:'berries',name:'Saskatoon\nBerries',csat:84,colors:'#3b1070/#7c3aed',logo:'<circle cx="50" cy="50" r="47" fill="#3b1070" stroke="#7c3aed" stroke-width="2"/><circle cx="41" cy="42" r="9" fill="#6d28d9"/><circle cx="59" cy="42" r="9" fill="#6d28d9"/><circle cx="50" cy="30" r="9" fill="#7c3aed"/><line x1="50" y1="21" x2="50" y2="28" stroke="#15803d" stroke-width="2"/><ellipse cx="55" cy="20" rx="5" ry="3" fill="#16a34a"/><ellipse cx="45" cy="20" rx="4" ry="3" fill="#15803d"/><text x="50" y="75" text-anchor="middle" fill="white" font-family="Arial Black" font-size="9" font-weight="900" letter-spacing="0.5">SASKATOON</text>',
+    h:[{g:'08',vs:'MEDICINE HAT',date:'06-15',n:97,rt:93,a:91,v:84,s:79,f:75,nps:25},{g:'07',vs:'MOOSE JAW',date:'06-11',n:65,rt:95,a:93,v:72,s:74,f:66,nps:24},{g:'06',vs:"SWIFT CURRENT",date:'05-31',n:58,rt:94,a:94,v:71,s:72,f:64,nps:23},{g:'05',vs:'OKOTOKS',date:'05-29',n:120,rt:91,a:88,v:86,s:76,f:71,nps:24},{g:'04',vs:'ENERGY CITY',date:'05-29',n:125,rt:91,a:88,v:86,s:76,f:71,nps:24},{g:'03',vs:'WEYBURN',date:'05-24',n:58,rt:94,a:94,v:71,s:72,f:64,nps:23},{g:'02',vs:'REGINA',date:'05-30',n:89,rt:79,a:82,v:77,s:81,f:83,nps:22},{g:'01',vs:'REGINA',date:'05-29',n:125,rt:91,a:88,v:86,s:76,f:71,nps:24}],
+    a:[{g:'08',vs:'EDMONTON',date:'06-16',n:88,rt:86,a:84,v:79,s:74,f:70,nps:22},{g:'07',vs:'LETHBRIDGE',date:'06-13',n:102,rt:90,a:87,v:83,s:77,f:72,nps:24},{g:'06',vs:'MOOSE JAW',date:'06-08',n:115,rt:92,a:89,v:84,s:78,f:72,nps:25},{g:'05',vs:'WEYBURN',date:'06-01',n:71,rt:86,a:84,v:80,s:75,f:71,nps:22},{g:'04',vs:'MEDICINE HAT',date:'05-25',n:63,rt:83,a:80,v:75,s:71,f:66,nps:20},{g:'03',vs:'EDMONTON',date:'05-22',n:98,rt:88,a:86,v:81,s:75,f:71,nps:23},{g:'02',vs:'LETHBRIDGE',date:'05-16',n:119,rt:91,a:88,v:84,s:78,f:73,nps:24},{g:'01',vs:"SWIFT CURRENT",date:'05-11',n:74,rt:87,a:85,v:80,s:74,f:70,nps:22}]
+  },
+  {id:'redsox',name:'Regina\nRed Sox',csat:79,colors:'#cc1122/#001a4b',logo:'<circle cx="50" cy="50" r="47" fill="#cc1122" stroke="#001a4b" stroke-width="2"/><path d="M40 35 L50 40 L60 35 L62 50 L60 65 L40 65 L38 50 Z" fill="white" stroke="#cc1122" stroke-width="1"/><text x="50" y="80" text-anchor="middle" fill="white" font-family="Arial Black" font-size="8" font-weight="900">RED SOX</text>',
+    h:[{g:'06',vs:'SASKATOON',date:'06-18',n:74,rt:82,a:79,v:73,s:75,f:77,nps:21},{g:'05',vs:'MOOSE JAW',date:'06-11',n:98,rt:84,a:81,v:76,s:79,f:82,nps:23},{g:'04',vs:'MEDICINE HAT',date:'06-08',n:110,rt:87,a:83,v:77,s:80,f:83,nps:24},{g:'03',vs:'SWIFT CURRENT',date:'06-01',n:65,rt:81,a:78,v:72,s:75,f:77,nps:21},{g:'02',vs:'WEYBURN',date:'05-25',n:82,rt:83,a:80,v:74,s:77,f:79,nps:22},{g:'01',vs:'SASKATOON',date:'05-29',n:125,rt:84,a:82,v:77,s:80,f:83,nps:23}],
+    a:[{g:'06',vs:'SWIFT CURRENT',date:'06-21',n:68,rt:80,a:77,v:71,s:74,f:76,nps:20},{g:'05',vs:'WEYBURN',date:'06-14',n:89,rt:82,a:79,v:74,s:76,f:78,nps:21},{g:'04',vs:'EDMONTON',date:'06-08',n:105,rt:85,a:82,v:76,s:79,f:82,nps:23},{g:'03',vs:'MOOSE JAW',date:'06-01',n:77,rt:81,a:78,v:73,s:75,f:77,nps:21},{g:'02',vs:'SASKATOON',date:'05-30',n:89,rt:79,a:76,v:70,s:73,f:75,nps:20},{g:'01',vs:'SASKATOON',date:'05-29',n:125,rt:83,a:80,v:75,s:77,f:79,nps:22}]
+  },
+  {id:'57s',name:"Swift Current\n57's",csat:81,colors:'#1a3a8f/#d4a017',logo:'<circle cx="50" cy="50" r="47" fill="#1a3a8f" stroke="#d4a017" stroke-width="2"/><circle cx="50" cy="50" r="40" fill="none" stroke="#d4a017" stroke-width="1" opacity="0.3"/><text x="50" y="70" text-anchor="middle" fill="#d4a017" font-family="Arial Black" font-size="32" font-weight="900">57</text><text x="50" y="88" text-anchor="middle" fill="white" font-family="Arial" font-size="7" font-weight="700">57\'S</text>',
+    h:[{g:'06',vs:'REGINA',date:'06-21',n:82,rt:88,a:85,v:78,s:80,f:74,nps:22},{g:'05',vs:'LETHBRIDGE',date:'06-14',n:105,rt:91,a:88,v:81,s:83,f:77,nps:24},{g:'04',vs:'WEYBURN',date:'06-11',n:118,rt:90,a:87,v:80,s:82,f:76,nps:25},{g:'03',vs:'EDMONTON',date:'06-05',n:70,rt:87,a:84,v:77,s:79,f:73,nps:22},{g:'02',vs:'MEDICINE HAT',date:'05-29',n:92,rt:88,a:85,v:79,s:81,f:75,nps:23},{g:'01',vs:'SASKATOON',date:'05-31',n:58,rt:87,a:86,v:78,s:80,f:74,nps:22}],
+    a:[{g:'06',vs:'WEYBURN',date:'06-22',n:74,rt:86,a:83,v:76,s:78,f:72,nps:21},{g:'05',vs:'OKOTOKS',date:'06-15',n:96,rt:89,a:86,v:79,s:81,f:75,nps:23},{g:'04',vs:'EDMONTON',date:'06-09',n:111,rt:92,a:89,v:82,s:84,f:78,nps:25},{g:'03',vs:'LETHBRIDGE',date:'06-02',n:78,rt:88,a:85,v:78,s:80,f:74,nps:22},{g:'02',vs:'REGINA',date:'06-21',n:68,rt:86,a:83,v:77,s:79,f:73,nps:21},{g:'01',vs:'SASKATOON',date:'05-11',n:74,rt:88,a:86,v:79,s:81,f:75,nps:22}]
+  },
+  {id:'beavers',name:'Weyburn\nBeavers',csat:76,colors:'#6b3a1f/#c8a951',logo:'<circle cx="50" cy="50" r="47" fill="#6b3a1f" stroke="#c8a951" stroke-width="2"/><ellipse cx="50" cy="55" rx="18" ry="22" fill="#8B4513" stroke="#c8a951" stroke-width="1"/><path d="M35 40 L40 30 M65 40 L60 30" stroke="#c8a951" stroke-width="2" stroke-linecap="round"/><text x="50" y="82" text-anchor="middle" fill="white" font-family="Arial Black" font-size="8" font-weight="900">BEAVERS</text>',
+    h:[{g:'06',vs:'OKOTOKS',date:'06-20',n:73,rt:76,a:74,v:69,s:71,f:66,nps:20},{g:'05',vs:'LETHBRIDGE',date:'06-13',n:87,rt:78,a:75,v:71,s:73,f:68,nps:21},{g:'04',vs:'EDMONTON',date:'06-07',n:95,rt:79,a:76,v:72,s:74,f:69,nps:21},{g:'03',vs:'MEDICINE HAT',date:'06-01',n:64,rt:77,a:74,v:70,s:72,f:67,nps:20},{g:'02',vs:'REGINA',date:'05-25',n:82,rt:77,a:74,v:70,s:72,f:67,nps:20},{g:'01',vs:'SASKATOON',date:'05-24',n:58,rt:76,a:73,v:69,s:71,f:66,nps:19}],
+    a:[{g:'06',vs:'OKOTOKS',date:'06-23',n:68,rt:75,a:72,v:68,s:70,f:65,nps:19},{g:'05',vs:'MOOSE JAW',date:'06-16',n:80,rt:77,a:74,v:70,s:72,f:67,nps:20},{g:'04',vs:'LETHBRIDGE',date:'06-09',n:92,rt:78,a:75,v:71,s:73,f:68,nps:21},{g:'03',vs:'EDMONTON',date:'06-02',n:71,rt:76,a:73,v:69,s:71,f:66,nps:20},{g:'02',vs:'REGINA',date:'06-21',n:89,rt:78,a:75,v:71,s:73,f:68,nps:21},{g:'01',vs:'SASKATOON',date:'06-01',n:71,rt:77,a:74,v:70,s:72,f:67,nps:20}]
+  },
+  {id:'dawgs',name:'Okotoks\nDawgs',csat:82,colors:'#001a4b/#cc1122',logo:'<circle cx="50" cy="50" r="47" fill="#001a4b" stroke="#cc1122" stroke-width="2"/><g fill="#cc1122"><circle cx="35" cy="40" r="6"/><circle cx="50" cy="35" r="6"/><circle cx="65" cy="40" r="6"/><circle cx="40" cy="52" r="4"/><circle cx="60" cy="52" r="4"/><ellipse cx="50" cy="60" rx="8" ry="6"/></g><text x="50" y="82" text-anchor="middle" fill="white" font-family="Arial Black" font-size="8" font-weight="900">DAWGS</text>',
+    h:[{g:'06',vs:'ENERGY CITY',date:'06-19',n:88,rt:90,a:87,v:80,s:82,f:76,nps:24},{g:'05',vs:'LETHBRIDGE',date:'06-12',n:103,rt:92,a:89,v:82,s:84,f:78,nps:25},{g:'04',vs:'EDMONTON',date:'06-06',n:109,rt:91,a:88,v:81,s:83,f:77,nps:24},{g:'03',vs:'MOOSE JAW',date:'06-04',n:76,rt:89,a:86,v:79,s:81,f:75,nps:23},{g:'02',vs:'MEDICINE HAT',date:'05-28',n:85,rt:89,a:86,v:79,s:81,f:75,nps:23},{g:'01',vs:'SASKATOON',date:'05-29',n:120,rt:89,a:86,v:84,s:74,f:70,nps:24}],
+    a:[{g:'06',vs:'MOOSE JAW',date:'06-24',n:92,rt:88,a:85,v:78,s:80,f:74,nps:23},{g:'05',vs:'SWIFT CURRENT',date:'06-15',n:96,rt:89,a:86,v:79,s:81,f:75,nps:23},{g:'04',vs:'EDMONTON',date:'06-10',n:108,rt:91,a:88,v:81,s:83,f:77,nps:24},{g:'03',vs:'LETHBRIDGE',date:'06-03',n:79,rt:89,a:86,v:79,s:81,f:75,nps:23},{g:'02',vs:'MEDICINE HAT',date:'05-29',n:74,rt:88,a:85,v:78,s:80,f:74,nps:22},{g:'01',vs:'ENERGY CITY',date:'05-24',n:115,rt:90,a:87,v:80,s:82,f:76,nps:24}]
+  },
+  {id:'cactus',name:'Energy City\nCactus Rats',csat:77,colors:'#1b5e20/#e87c2a',logo:'<circle cx="50" cy="50" r="47" fill="#1b5e20" stroke="#e87c2a" stroke-width="2"/><g fill="#e87c2a"><rect x="48" y="25" width="4" height="35"/><rect x="35" y="48" width="30" height="4"/><circle cx="35" cy="45" r="2"/><circle cx="65" cy="45" r="2"/><circle cx="50" cy="25" r="2"/><circle cx="50" cy="60" r="2"/></g><text x="50" y="82" text-anchor="middle" fill="white" font-family="Arial Black" font-size="7" font-weight="900">CACTUS RATS</text>',
+    h:[{g:'06',vs:'MOOSE JAW',date:'06-17',n:80,rt:78,a:75,v:70,s:72,f:67,nps:21},{g:'05',vs:'LETHBRIDGE',date:'06-10',n:94,rt:79,a:76,v:71,s:73,f:68,nps:21},{g:'04',vs:'EDMONTON',date:'06-04',n:102,rt:80,a:77,v:72,s:74,f:69,nps:22},{g:'03',vs:'WEYBURN',date:'05-31',n:69,rt:78,a:75,v:70,s:72,f:67,nps:21},{g:'02',vs:'MEDICINE HAT',date:'05-26',n:77,rt:78,a:75,v:70,s:72,f:67,nps:20},{g:'01',vs:'SASKATOON',date:'05-29',n:125,rt:79,a:76,v:84,s:74,f:69,nps:24}],
+    a:[{g:'06',vs:'EDMONTON',date:'06-25',n:86,rt:77,a:74,v:69,s:71,f:66,nps:20},{g:'05',vs:'MOOSE JAW',date:'06-18',n:91,rt:78,a:75,v:70,s:72,f:67,nps:21},{g:'04',vs:'LETHBRIDGE',date:'06-11',n:100,rt:79,a:76,v:71,s:73,f:68,nps:21},{g:'03',vs:'SWIFT CURRENT',date:'06-05',n:75,rt:77,a:74,v:69,s:71,f:66,nps:20},{g:'02',vs:'WEYBURN',date:'05-29',n:68,rt:76,a:73,v:68,s:70,f:65,nps:19},{g:'01',vs:'OKOTOKS',date:'05-24',n:115,rt:78,a:75,v:80,s:72,f:67,nps:24}]
+  },
+  {id:'prospects',name:'Edmonton\nProspects',csat:85,colors:'#0a2d6e/#e8c44a',logo:'<circle cx="50" cy="50" r="47" fill="#0a2d6e" stroke="#e8c44a" stroke-width="2"/><rect x="35" y="35" width="30" height="30" fill="none" stroke="#e8c44a" stroke-width="2"/><line x1="50" y1="35" x2="50" y2="65" stroke="#e8c44a" stroke-width="1.5"/><line x1="35" y1="50" x2="65" y2="50" stroke="#e8c44a" stroke-width="1.5"/><text x="50" y="82" text-anchor="middle" fill="white" font-family="Arial Black" font-size="8" font-weight="900">PROSPECTS</text>',
+    h:[{g:'06',vs:'LETHBRIDGE',date:'06-20',n:99,rt:94,a:91,v:84,s:81,f:77,nps:26},{g:'05',vs:'MOOSE JAW',date:'06-13',n:107,rt:95,a:92,v:85,s:82,f:78,nps:26},{g:'04',vs:'WEYBURN',date:'06-09',n:116,rt:94,a:91,v:84,s:81,f:77,nps:25},{g:'03',vs:'MEDICINE HAT',date:'06-03',n:82,rt:92,a:89,v:82,s:79,f:75,nps:24},{g:'02',vs:'REGINA',date:'05-27',n:91,rt:92,a:89,v:82,s:79,f:75,nps:24},{g:'01',vs:'SASKATOON',date:'05-22',n:98,rt:91,a:88,v:81,s:78,f:74,nps:24}],
+    a:[{g:'06',vs:'MOOSE JAW',date:'06-26',n:95,rt:93,a:90,v:83,s:80,f:76,nps:25},{g:'05',vs:'LETHBRIDGE',date:'06-19',n:104,rt:92,a:89,v:82,s:79,f:75,nps:24},{g:'04',vs:'SWIFT CURRENT',date:'06-09',n:111,rt:93,a:90,v:83,s:80,f:76,nps:25},{g:'03',vs:'OKOTOKS',date:'06-04',n:87,rt:91,a:88,v:81,s:78,f:74,nps:24},{g:'02',vs:'REGINA',date:'05-28',n:105,rt:92,a:89,v:82,s:79,f:75,nps:24},{g:'01',vs:'SASKATOON',date:'06-16',n:88,rt:90,a:87,v:80,s:77,f:73,nps:23}]
+  },
+  {id:'bulls',name:'Lethbridge\nBulls',csat:78,colors:'#9a1122/#111111',logo:'<circle cx="50" cy="50" r="47" fill="#9a1122" stroke="#111" stroke-width="2"/><g stroke="white" stroke-width="2" fill="none"><path d="M30 40 Q35 35 40 40"/><path d="M70 40 Q65 35 60 40"/></g><circle cx="50" cy="52" r="4" fill="white"/><text x="50" y="82" text-anchor="middle" fill="white" font-family="Arial Black" font-size="8" font-weight="900">BULLS</text>',
+    h:[{g:'06',vs:'MOOSE JAW',date:'06-21',n:91,rt:80,a:77,v:72,s:75,f:70,nps:21},{g:'05',vs:'EDMONTON',date:'06-14',n:106,rt:82,a:79,v:74,s:77,f:72,nps:22},{g:'04',vs:'OKOTOKS',date:'06-11',n:114,rt:81,a:78,v:73,s:76,f:71,nps:22},{g:'03',vs:'SWIFT CURRENT',date:'06-05',n:78,rt:79,a:76,v:71,s:74,f:69,nps:21},{g:'02',vs:'WEYBURN',date:'05-30',n:88,rt:79,a:76,v:71,s:74,f:69,nps:21},{g:'01',vs:'SASKATOON',date:'05-16',n:119,rt:81,a:78,v:73,s:76,f:71,nps:23}],
+    a:[{g:'06',vs:'WEYBURN',date:'06-24',n:86,rt:79,a:76,v:71,s:74,f:69,nps:21},{g:'05',vs:'MOOSE JAW',date:'06-17',n:98,rt:80,a:77,v:72,s:75,f:70,nps:21},{g:'04',vs:'SWIFT CURRENT',date:'06-02',n:78,rt:79,a:76,v:71,s:74,f:69,nps:21},{g:'03',vs:'EDMONTON',date:'05-28',n:104,rt:81,a:78,v:73,s:76,f:71,nps:22},{g:'02',vs:'REGINA',date:'05-16',n:119,rt:80,a:77,v:72,s:75,f:70,nps:21},{g:'01',vs:'SASKATOON',date:'06-13',n:102,rt:81,a:78,v:73,s:76,f:71,nps:23}]
+  },
+  {id:'mavericks',name:'Medicine Hat\nMavericks',csat:72,colors:'#000000/#d4611a',logo:'<circle cx="50" cy="50" r="47" fill="#000" stroke="#d4611a" stroke-width="2"/><path d="M30 50 L50 35 L70 50 L68 55 L32 55 Z" fill="#d4611a"/><line x1="50" y1="50" x2="50" y2="65" stroke="#d4611a" stroke-width="2"/><text x="50" y="82" text-anchor="middle" fill="white" font-family="Arial Black" font-size="7" font-weight="900">MAVERICKS</text>',
+    h:[{g:'06',vs:'REGINA',date:'06-19',n:71,rt:72,a:69,v:64,s:67,f:62,nps:18},{g:'05',vs:'WEYBURN',date:'06-12',n:83,rt:74,a:71,v:66,s:69,f:64,nps:19},{g:'04',vs:'OKOTOKS',date:'06-08',n:95,rt:75,a:72,v:67,s:70,f:65,nps:20},{g:'03',vs:'LETHBRIDGE',date:'06-02',n:68,rt:73,a:70,v:65,s:68,f:63,nps:19},{g:'02',vs:'SWIFT CURRENT',date:'05-29',n:92,rt:73,a:70,v:65,s:68,f:63,nps:19},{g:'01',vs:'SASKATOON',date:'06-15',n:97,rt:72,a:69,v:64,s:67,f:62,nps:18}],
+    a:[{g:'06',vs:'EDMONTON',date:'06-27',n:79,rt:71,a:68,v:63,s:66,f:61,nps:17},{g:'05',vs:'MOOSE JAW',date:'06-20',n:87,rt:72,a:69,v:64,s:67,f:62,nps:18},{g:'04',vs:'LETHBRIDGE',date:'06-13',n:98,rt:73,a:70,v:65,s:68,f:63,nps:19},{g:'03',vs:'REGINA',date:'06-06',n:76,rt:71,a:68,v:63,s:66,f:61,nps:17},{g:'02',vs:'OKOTOKS',date:'05-30',n:74,rt:70,a:67,v:62,s:65,f:60,nps:17},{g:'01',vs:'SASKATOON',date:'05-25',n:63,rt:70,a:67,v:62,s:65,f:60,nps:16}]
+  },
+  {id:'express',name:'Moose Jaw\nMiller Express',csat:83,colors:'#1a237e/#ffd700',logo:'<circle cx="50" cy="50" r="47" fill="#1a237e" stroke="#ffd700" stroke-width="2"/><path d="M50 25 L55 40 L60 45 L50 55 L40 45 L45 40 Z" fill="#ffd700"/><text x="50" y="75" text-anchor="middle" fill="#ffd700" font-family="Arial Black" font-size="8" font-weight="900">MJ</text><text x="50" y="88" text-anchor="middle" fill="white" font-family="Arial" font-size="6" font-weight="700">EXPRESS</text>',
+    h:[{g:'06',vs:'LETHBRIDGE',date:'06-22',n:96,rt:91,a:88,v:81,s:83,f:77,nps:24},{g:'05',vs:'EDMONTON',date:'06-15',n:108,rt:93,a:90,v:83,s:85,f:79,nps:25},{g:'04',vs:'OKOTOKS',date:'06-11',n:119,rt:92,a:89,v:82,s:84,f:78,nps:25},{g:'03',vs:'SWIFT CURRENT',date:'06-06',n:81,rt:90,a:87,v:80,s:82,f:76,nps:23},{g:'02',vs:'REGINA',date:'06-11',n:98,rt:90,a:87,v:80,s:82,f:76,nps:24},{g:'01',vs:'SASKATOON',date:'06-11',n:65,rt:91,a:89,v:80,s:80,f:74,nps:24}],
+    a:[{g:'06',vs:'LETHBRIDGE',date:'06-28',n:94,rt:90,a:87,v:80,s:82,f:76,nps:24},{g:'05',vs:'EDMONTON',date:'06-21',n:106,rt:91,a:88,v:81,s:83,f:77,nps:24},{g:'04',vs:'OKOTOKS',date:'06-13',n:113,rt:90,a:87,v:80,s:82,f:76,nps:24},{g:'03',vs:'SWIFT CURRENT',date:'06-07',n:87,rt:89,a:86,v:79,s:81,f:75,nps:23},{g:'02',vs:'REGINA',date:'06-23',n:77,rt:88,a:85,v:78,s:80,f:74,nps:22},{g:'01',vs:'SASKATOON',date:'06-08',n:115,rt:90,a:87,v:82,s:82,f:74,nps:25}]
+  }
+];
+
+let cur=0, t='h';
+
+function render(){const d=TEAMS[cur][t];document.getElementById('csat').textContent=TEAMS[cur].csat;document.getElementById('team').textContent=TEAMS[cur].name;document.getElementById('logo').innerHTML=`<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">${TEAMS[cur].logo}</svg>`;let h='';d.forEach(g=>{h+=`<tr ${g.nps>=24?'class="hi"':''}><td>${g.g}</td><td class="vs">${g.vs}</td><td>${g.date}</td><td>${g.n}</td><td>${g.rt}</td><td>${g.a}</td><td>${g.v}</td><td>${g.s}</td><td>${g.f}</td><td>${g.nps}</td></tr>`});document.getElementById('body').innerHTML=h;let n=0,r=0,a=0,v=0,s=0,f=0;d.forEach(g=>{n+=g.n;r+=g.rt*g.n;a+=g.a*g.n;v+=g.v*g.n;s+=g.s*g.n;f+=g.f*g.n});r=Math.round(r/n);a=Math.round(a/n);v=Math.round(v/n);s=Math.round(s/n);f=Math.round(f/n);let np=0;d.forEach(g=>np+=g.nps);np=Math.round(np/d.length);document.getElementById('ov').innerHTML=`<td class="ov-label">Overall</td><td>${n}</td><td>${r}</td><td>${a}</td><td>${v}</td><td>${s}</td><td>${f}</td><td>${np}</td><td></td><td></td>`}
+
+function tab(x){t=x;document.getElementById('h').classList.toggle('active');document.getElementById('a').classList.toggle('active');render()}
+
+function sel(i){cur=i;document.querySelectorAll('.team-tile').forEach((e,j)=>e.classList.toggle('active',j===i));render()}
+
+window.onload=()=>{let h='';TEAMS.forEach((e,i)=>{h+=`<div class="team-tile ${i===0?'active':''}" onclick="sel(${i})"><svg class="team-logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">${e.logo}</svg><div class="team-name">${e.name.split('\\n').join(' ')}</div></div>`});document.getElementById('teams').innerHTML=h;render()};
+</script>
+
+</body>
+</html>
