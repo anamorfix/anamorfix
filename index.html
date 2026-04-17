@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<!-- saved from url=(0061)file:///C:/Users/dolin.patel/Downloads/wcbl-stadium-v2_1.html -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WCBL Fan Experience — Stadium View</title>
+<link rel="preconnect" href="https://fonts.googleapis.com/">
+<link href="./WCBL Fan Experience — Stadium View_files/css2" rel="stylesheet">
+<style>
+  :root {
+    --sky: #151c25;
+    --sky-lighter: #1c2733;
+    --surface: #ffffff;
+    --text: #1a1a1a;
+    --text-light: #ffffff;
+    --text-muted: rgba(255,255,255,0.5);
+    --accent: #e63946;
+    --green: #22c55e;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --team-a: #3b82f6;
+    --team-a-bg: rgba(59,130,246,0.12);
+    --team-a-border: rgba(59,130,246,0.25);
+    --team-b: #f97316;
+    --team-b-bg: rgba(249,115,22,0.12);
+    --team-b-border: rgba(249,115,22,0.25);
+    --panel-glass: rgba(255,255,255,0.06);
+    --panel-border: rgba(255,255,255,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Barlow', sans-serif;
+    background: var(--sky);
+    color: var(--text-light);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .topbar {
+    background: var(--accent);
+    padding: 12px 28px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: relative; z-index: 100;
+  }
+  .topbar::after {
+    content:''; position:absolute; bottom:-6px; left:0; right:0; height:6px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.2), transparent);
+  }
+  .topbar-brand {
+    display: flex; align-items: center; gap: 14px;
+  }
+  .topbar-logo {
+    font-family:'Barlow Condensed',sans-serif; font-size:22px; font-weight:800;
+    color:#fff; letter-spacing:3px;
+  }
+  .topbar-divider { width:1px; height:22px; background:rgba(255,255,255,0.3); }
+  .topbar-title {
+    font-family:'Barlow Condensed',sans-serif; font-size:13px; font-weight:500;
+    color:rgba(255,255,255,0.85); text-transform:uppercase; letter-spacing:1.5px;
+  }
+  .topbar-right { font-size:12px; color:rgba(255,255,255,0.6); }
+
+  /* Team selectors row */
+  .selector-row {
+    display: flex; justify-content: center; align-items: center;
+    gap: 40px; padding: 20px 28px 8px;
+  }
+  .team-selector {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .ts-dot {
+    width: 14px; height: 14px; border-radius: 50%;
+  }
+  .ts-dot.a { background: var(--team-a); box-shadow: 0 0 10px rgba(59,130,246,0.5); }
+  .ts-dot.b { background: var(--team-b); box-shadow: 0 0 10px rgba(249,115,22,0.5); }
+  .team-selector select {
+    font-family:'Barlow',sans-serif; font-size:14px; font-weight:600;
+    padding:8px 14px; border-radius:8px; cursor:pointer;
+    color:#fff; min-width:220px;
+  }
+  .team-selector.a select {
+    background: var(--team-a-bg); border:1px solid var(--team-a-border);
+  }
+  .team-selector.b select {
+    background: var(--team-b-bg); border:1px solid var(--team-b-border);
+  }
+  .team-selector select option { color:#1a1a1a; background:#fff; }
+  .vs-badge {
+    font-family:'Barlow Condensed',sans-serif; font-size:20px; font-weight:700;
+    color:rgba(255,255,255,0.25); letter-spacing:2px;
+  }
+
+  /* Main layout: left panel | stadium | right panel */
+  .main-layout {
+    display: grid;
+    grid-template-columns: 240px 1fr 240px;
+    gap: 0;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 12px 20px 0;
+    min-height: 480px;
+    align-items: start;
+  }
+
+  /* Team panels */
+  .team-panel {
+    padding: 16px 12px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .tp-header {
+    font-family:'Barlow Condensed',sans-serif; font-size:13px; font-weight:600;
+    text-transform:uppercase; letter-spacing:1.5px;
+    padding-bottom:8px; margin-bottom:4px;
+    border-bottom:2px solid;
+  }
+  .team-panel.a .tp-header { color:var(--team-a); border-color:var(--team-a); }
+  .team-panel.b .tp-header { color:var(--team-b); border-color:var(--team-b); text-align:right; }
+
+  .tp-big-stat {
+    background: var(--panel-glass);
+    border:1px solid var(--panel-border);
+    border-radius:10px;
+    padding:12px 14px;
+  }
+  .tp-big-stat .stat-label {
+    font-size:11px; color:var(--text-muted); text-transform:uppercase;
+    letter-spacing:0.8px; font-weight:500;
+  }
+  .tp-big-stat .stat-value {
+    font-family:'Barlow Condensed',sans-serif; font-size:30px; font-weight:700; line-height:1.15;
+  }
+  .tp-big-stat .stat-sub { font-size:11px; color:var(--text-muted); }
+  .team-panel.b .tp-big-stat { text-align:right; }
+
+  /* Category score rows */
+  .tp-cat {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .tp-cat:last-child { border-bottom:none; }
+  .tp-cat-score {
+    width:42px; height:42px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Barlow Condensed',sans-serif; font-size:16px; font-weight:700;
+    color:#fff; flex-shrink:0;
+    border: 2px solid rgba(255,255,255,0.2);
+  }
+  .tp-cat-info { flex:1; }
+  .tp-cat-name { font-size:13px; font-weight:600; color:rgba(255,255,255,0.85); }
+  .tp-cat-bar { height:5px; border-radius:3px; background:rgba(255,255,255,0.08); margin-top:4px; overflow:hidden; }
+  .tp-cat-bar-fill { height:100%; border-radius:3px; transition: width 0.5s ease-out; }
+  .team-panel.b .tp-cat { flex-direction: row-reverse; }
+  .team-panel.b .tp-cat-info { text-align:right; }
+
+  /* Stadium center */
+  .stadium-center {
+    display: flex; flex-direction: column; align-items: center;
+    position: relative;
+    padding: 0 8px;
+  }
+  .stadium-svg { width:100%; max-width:580px; height:auto; }
+
+  /* Category labels on the stadium */
+  .stadium-labels {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+  }
+  .stad-label {
+    position: absolute;
+    font-family:'Barlow Condensed',sans-serif;
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1.2px;
+    color: rgba(255,255,255,0.4);
+    white-space: nowrap;
+  }
+
+  /* League section at bottom */
+  .league-section {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px 28px 36px;
+  }
+  .league-header {
+    font-family:'Barlow Condensed',sans-serif;
+    font-size:14px; font-weight:600;
+    text-transform:uppercase; letter-spacing:2px;
+    color:rgba(255,255,255,0.35);
+    margin-bottom:14px;
+    padding-bottom:10px;
+    border-bottom:1px solid var(--panel-border);
+  }
+  .league-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .league-card {
+    background: var(--panel-glass);
+    border:1px solid var(--panel-border);
+    border-radius:10px;
+    padding:16px 18px;
+    text-align:center;
+  }
+  .lc-label {
+    font-size:11px; color:var(--text-muted); text-transform:uppercase;
+    letter-spacing:0.8px; font-weight:500; margin-bottom:6px;
+  }
+  .lc-value {
+    font-family:'Barlow Condensed',sans-serif;
+    font-size:32px; font-weight:700; line-height:1.1;
+  }
+  .lc-sub { font-size:12px; color:var(--text-muted); margin-top:4px; }
+  .lc-change { font-size:12px; font-weight:600; margin-top:4px; }
+  .lc-change.up { color:var(--green); }
+
+  /* League category bars */
+  .league-cats {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+  }
+  .league-cat-card {
+    background: var(--panel-glass);
+    border:1px solid var(--panel-border);
+    border-radius:10px;
+    padding:14px 16px;
+    text-align:center;
+  }
+  .lcc-label { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.6px; font-weight:500; margin-bottom:8px; }
+  .lcc-score {
+    font-family:'Barlow Condensed',sans-serif;
+    font-size:28px; font-weight:700; line-height:1;
+  }
+  .lcc-bar { height:5px; border-radius:3px; background:rgba(255,255,255,0.08); margin-top:10px; overflow:hidden; }
+  .lcc-bar-fill { height:100%; border-radius:3px; }
+
+  .footer {
+    text-align:center; padding:12px 0 24px;
+    font-size:11px; color:rgba(255,255,255,0.25);
+    letter-spacing:0.5px;
+  }
+
+  @keyframes fadeIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+  .anim { animation: fadeIn 0.45s ease-out forwards; opacity:0; }
+  .d1{animation-delay:0.05s} .d2{animation-delay:0.1s} .d3{animation-delay:0.15s}
+  .d4{animation-delay:0.2s} .d5{animation-delay:0.25s} .d6{animation-delay:0.35s}
+
+  @media(max-width:900px){
+    .main-layout{grid-template-columns:1fr;gap:16px;}
+    .team-panel.b .tp-cat{flex-direction:row;} .team-panel.b .tp-cat-info{text-align:left;}
+    .team-panel.b .tp-header{text-align:left;}
+    .team-panel.b .tp-big-stat{text-align:left;}
+    .league-grid{grid-template-columns:1fr 1fr;}
+    .league-cats{grid-template-columns:1fr 1fr;}
+    .selector-row{flex-direction:column;gap:12px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="topbar-logo">WCBL</div>
+    <div class="topbar-divider"></div>
+    <div class="topbar-title">Fan experience benchmark • 2025 season</div>
+  </div>
+  <div class="topbar-right">Sample data for demonstration</div>
+</div>
+
+<!-- Team selectors -->
+<div class="selector-row anim d1">
+  <div class="team-selector a">
+    <span class="ts-dot a"></span>
+    <select id="teamA"><option value="Brooks Bombers" selected="">Brooks Bombers</option><option value="Energy City Cactus Rats">Energy City Cactus Rats</option><option value="Fort McMurray Giants">Fort McMurray Giants</option><option value="Lethbridge Bulls">Lethbridge Bulls</option><option value="Medicine Hat Mavericks">Medicine Hat Mavericks</option><option value="Moose Jaw Miller Express">Moose Jaw Miller Express</option><option value="Okotoks Dawgs">Okotoks Dawgs</option><option value="Regina Red Sox">Regina Red Sox</option><option value="Saskatoon Berries">Saskatoon Berries</option><option value="Swift Current 57&#39;s">Swift Current 57's</option><option value="Sylvan Lake Gulls">Sylvan Lake Gulls</option><option value="Weyburn Beavers">Weyburn Beavers</option></select>
+  </div>
+  <div class="vs-badge">VS</div>
+  <div class="team-selector b">
+    <span class="ts-dot b"></span>
+    <select id="teamB"><option value="Brooks Bombers">Brooks Bombers</option><option value="Energy City Cactus Rats" selected="">Energy City Cactus Rats</option><option value="Fort McMurray Giants">Fort McMurray Giants</option><option value="Lethbridge Bulls">Lethbridge Bulls</option><option value="Medicine Hat Mavericks">Medicine Hat Mavericks</option><option value="Moose Jaw Miller Express">Moose Jaw Miller Express</option><option value="Okotoks Dawgs">Okotoks Dawgs</option><option value="Regina Red Sox">Regina Red Sox</option><option value="Saskatoon Berries">Saskatoon Berries</option><option value="Swift Current 57&#39;s">Swift Current 57's</option><option value="Sylvan Lake Gulls">Sylvan Lake Gulls</option><option value="Weyburn Beavers">Weyburn Beavers</option></select>
+  </div>
+</div>
+
+<!-- Main: Left panel | Stadium | Right panel -->
+<div class="main-layout">
+
+  <!-- Team A panel (left) -->
+  <div class="team-panel a anim d2" id="panelA"><div class="tp-header">Brooks Bombers</div><div class="tp-big-stat">
+    <div class="stat-label">CSAT</div>
+    <div class="stat-value" style="color:var(--amber)">7.4 <span style="font-size:14px;color:var(--text-muted);font-family:Barlow,sans-serif;font-weight:400">/ 10</span></div>
+  </div><div style="display:flex;gap:8px;">
+    <div class="tp-big-stat" style="flex:1">
+      <div class="stat-label">NPS</div>
+      <div class="stat-value" style="font-size:24px;color:var(--green)">71</div>
+    </div>
+    <div class="tp-big-stat" style="flex:1">
+      <div class="stat-label">Return %</div>
+      <div class="stat-value" style="font-size:24px">81%</div>
+    </div>
+  </div><div class="tp-cat">
+      <div class="tp-cat-score" style="background:rgba(245,158,11,0.2);color:var(--amber);border-color:var(--amber)">6.8</div>
+      <div class="tp-cat-info">
+        <div class="tp-cat-name">Atmosphere</div>
+        <div class="tp-cat-bar"><div class="tp-cat-bar-fill" style="width:68%;background:var(--amber)"></div></div>
+      </div>
+    </div><div class="tp-cat">
+      <div class="tp-cat-score" style="background:rgba(34,197,94,0.2);color:var(--green);border-color:var(--green)">7.6</div>
+      <div class="tp-cat-info">
+        <div class="tp-cat-name">Entertainment</div>
+        <div class="tp-cat-bar"><div class="tp-cat-bar-fill" style="width:76%;background:var(--green)"></div></div>
+      </div>
+    </div><div class="tp-cat">
+      <div class="tp-cat-score" style="background:rgba(34,197,94,0.2);color:var(--green);border-color:var(--green)">7.8</div>
+      <div class="tp-cat-info">
+        <div class="tp-cat-name">Food &amp; bev</div>
+        <div class="tp-cat-bar"><div class="tp-cat-bar-fill" style="width:78%;background:var(--green)"></div></div>
+      </div>
+    </div><div class="tp-cat">
+      <div class="tp-cat-score" style="background:rgba(34,197,94,0.2);color:var(--green);border-color:var(--green)">7.7</div>
+      <div class="tp-cat-info">
+        <div class="tp-cat-name">Staff</div>
+        <div class="tp-cat-bar"><div class="tp-cat-bar-fill" style="width:77%;background:var(--green)"></div></div>
+      </div>
+    </div><div class="tp-cat">
+      <div class="tp-cat-score" style="background:rgba(245,158,11,0.2);color:var(--amber);border-color:var(--amber)">6.9</div>
+      <div class="tp-cat-info">
+        <div class="tp-cat-name">Value</div>
+        <div class="tp-cat-bar"><div class="tp-cat-bar-fill" style="width:69%;background:var(--amber)"></div></div>
+      </div>
+    </div><div style="margin-top:6px;padding:10px 12px;background:var(--panel-glass);border:1px solid var(--panel-border);border-radius:8px;">
+    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;font-weight:500;margin-bottom:6px;">vs league average</div><div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+      <span style="color:rgba(255,255,255,0.6)">Atmosphere</span>
+      <span style="font-weight:600;color:var(--red)">-1.2</span>
+    </div><div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+      <span style="color:rgba(255,255,255,0.6)">Entertainment</span>
+      <span style="font-weight:600;color:var(--green)">+0.3</span>
+    </div><div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+      <span style="color:rgba(255,255,255,0.6)">Food &amp; bev</span>
+      <span style="font-weight:600;color:var(--green)">+0.9</span>
+    </div><div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+      <span style="color:rgba(255,255,255,0.6)">Staff</span>
+      <span style="font-weight:600;color:var(--red)">-0.9</span>
+    </div><div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+      <span style="color:rgba(255,255,255,0.6)">Value</span>
+      <span style="font-weight:600;color:var(--red)">-0.7</span>
+    </div></div></div>
+
+  <!-- Stadium (center) -->
+  <div class="stadium-center anim d3">
+    <svg class="stadium-svg" viewBox="0 0 580 420" xmlns="http://www.w3.org/2000/svg">
+      <!-- Stadium shell -->
+      <ellipse cx="290" cy="250" rx="270" ry="155" fill="#22222e" stroke="#33334a" stroke-width="1.5"></ellipse>
+      <ellipse cx="290" cy="250" rx="250" ry="140" fill="#2a2a38"></ellipse>
+
+      <!-- Seating rows -->
+      <ellipse cx="290" cy="250" rx="242" ry="135" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"></ellipse>
+      <ellipse cx="290" cy="250" rx="228" ry="127" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"></ellipse>
+      <ellipse cx="290" cy="250" rx="214" ry="119" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"></ellipse>
+
+      <!-- Outfield grass -->
+      <ellipse cx="290" cy="255" rx="190" ry="100" fill="#2d6a3f"></ellipse>
+      <defs>
+        <pattern id="mow" patternUnits="userSpaceOnUse" width="30" height="30" patternTransform="rotate(45)">
+          <rect width="15" height="30" fill="rgba(255,255,255,0.015)"></rect>
+        </pattern>
+      </defs>
+      <ellipse cx="290" cy="255" rx="186" ry="97" fill="url(#mow)"></ellipse>
+
+      <!-- Warning track -->
+      <ellipse cx="290" cy="255" rx="190" ry="100" fill="none" stroke="rgba(196,148,90,0.25)" stroke-width="6"></ellipse>
+      <ellipse cx="290" cy="255" rx="194" ry="103" fill="none" stroke="#1e4d2d" stroke-width="3"></ellipse>
+
+      <!-- Infield dirt -->
+      <polygon points="290,200 360,265 290,330 220,265" fill="#c4945a" opacity="0.8"></polygon>
+      <polygon points="290,200 360,265 290,330 220,265" fill="none" stroke="#a07640" stroke-width="1"></polygon>
+
+      <!-- Base paths -->
+      <line x1="290" y1="200" x2="360" y2="265" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"></line>
+      <line x1="360" y1="265" x2="290" y2="330" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"></line>
+      <line x1="290" y1="330" x2="220" y2="265" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"></line>
+      <line x1="220" y1="265" x2="290" y2="200" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"></line>
+
+      <!-- Pitcher's mound -->
+      <circle cx="290" cy="265" r="8" fill="#b8884f" stroke="#a07640" stroke-width="0.8"></circle>
+
+      <!-- Bases -->
+      <rect x="286" y="196" width="8" height="8" rx="1" fill="#fff" transform="rotate(45 290 200)"></rect>
+      <rect x="356" y="261" width="8" height="8" rx="1" fill="#fff" transform="rotate(45 360 265)"></rect>
+      <rect x="216" y="261" width="8" height="8" rx="1" fill="#fff" transform="rotate(45 220 265)"></rect>
+      <rect x="286" y="326" width="8" height="8" rx="1" fill="#fff" transform="rotate(45 290 330)"></rect>
+
+      <!-- Foul lines -->
+      <line x1="290" y1="330" x2="100" y2="165" stroke="rgba(255,255,255,0.15)" stroke-width="1.2"></line>
+      <line x1="290" y1="330" x2="480" y2="165" stroke="rgba(255,255,255,0.15)" stroke-width="1.2"></line>
+
+      <!-- Concessions -->
+      <rect x="140" y="115" width="26" height="14" rx="3" fill="#4a4050" stroke="rgba(255,255,255,0.1)" stroke-width="0.8"></rect>
+      <rect x="210" y="100" width="26" height="14" rx="3" fill="#4a4050" stroke="rgba(255,255,255,0.1)" stroke-width="0.8"></rect>
+      <rect x="345" y="100" width="26" height="14" rx="3" fill="#4a4050" stroke="rgba(255,255,255,0.1)" stroke-width="0.8"></rect>
+      <rect x="415" y="115" width="26" height="14" rx="3" fill="#4a4050" stroke="rgba(255,255,255,0.1)" stroke-width="0.8"></rect>
+
+      <!-- Scoreboard -->
+      <rect x="255" y="130" width="70" height="22" rx="3" fill="#111118" stroke="#33334a" stroke-width="1"></rect>
+      <text x="290" y="145" text-anchor="middle" font-size="9" fill="#4ade80" font-family="Barlow Condensed" font-weight="600" letter-spacing="1.5">SCOREBOARD</text>
+
+      <!-- Lights -->
+      <circle cx="110" cy="140" r="4" fill="#fef08a" opacity="0.5"></circle>
+      <circle cx="110" cy="140" r="10" fill="#fef08a" opacity="0.08"></circle>
+      <circle cx="470" cy="140" r="4" fill="#fef08a" opacity="0.5"></circle>
+      <circle cx="470" cy="140" r="10" fill="#fef08a" opacity="0.08"></circle>
+
+      <!-- League Average title -->
+      <text x="290" y="88" text-anchor="middle" font-size="11" fill="rgba(255,255,255,0.35)" font-family="Barlow Condensed" font-weight="600" letter-spacing="3">LEAGUE AVERAGE</text>
+
+      <!-- ATMOSPHERE — grandstand area top -->
+      <line x1="290" y1="160" x2="290" y2="142" stroke="rgba(255,255,255,0.15)" stroke-width="1"></line>
+      <rect x="240" y="110" width="100" height="32" rx="6" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.12)" stroke-width="1"></rect>
+      <text id="sv-atm-label" x="264" y="130" font-size="9" fill="rgba(255,255,255,0.5)" font-family="Barlow Condensed" font-weight="500" letter-spacing="1">ATMOSPHERE</text>
+      <circle id="sv-atm-bg" cx="322" cy="126" r="11" fill="rgba(34,197,94,0.25)" stroke="rgba(34,197,94,0.6)" stroke-width="1"></circle>
+      <text id="sv-atm-val" x="322" y="130" text-anchor="middle" font-size="11" fill="#4ade80" font-family="Barlow Condensed" font-weight="700">8.0</text>
+
+      <!-- ENTERTAINMENT — center field -->
+      <circle id="sv-ent-bg" cx="290" cy="245" r="20" fill="rgba(245,158,11,0.25)" stroke="rgba(245,158,11,0.6)" stroke-width="1"></circle>
+      <text id="sv-ent-val" x="290" y="242" text-anchor="middle" font-size="13" fill="#fbbf24" font-family="Barlow Condensed" font-weight="700">7.3</text>
+      <text x="290" y="255" text-anchor="middle" font-size="7" fill="rgba(255,255,255,0.5)" font-family="Barlow Condensed" font-weight="500" letter-spacing="0.8">ENTERTAINMENT</text>
+
+      <!-- FOOD & BEV — concession area top-left -->
+      <line x1="180" y1="128" x2="180" y2="150" stroke="rgba(255,255,255,0.15)" stroke-width="1"></line>
+      <rect x="138" y="148" width="84" height="32" rx="6" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.12)" stroke-width="1"></rect>
+      <text x="157" y="168" font-size="9" fill="rgba(255,255,255,0.5)" font-family="Barlow Condensed" font-weight="500" letter-spacing="1">FOOD&amp;BEV</text>
+      <circle id="sv-fb-bg" cx="207" cy="164" r="11" fill="rgba(245,158,11,0.25)" stroke="rgba(245,158,11,0.6)" stroke-width="1"></circle>
+      <text id="sv-fb-val" x="207" y="168" text-anchor="middle" font-size="11" fill="#fbbf24" font-family="Barlow Condensed" font-weight="700">6.9</text>
+
+      <!-- STAFF — gate area left -->
+      <line x1="96" y1="260" x2="120" y2="260" stroke="rgba(255,255,255,0.15)" stroke-width="1"></line>
+      <rect x="48" y="244" width="50" height="32" rx="6" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.12)" stroke-width="1"></rect>
+      <text x="55" y="258" font-size="9" fill="rgba(255,255,255,0.5)" font-family="Barlow Condensed" font-weight="500" letter-spacing="1">STAFF</text>
+      <text id="sv-st-val" x="85" y="272" text-anchor="middle" font-size="13" fill="#4ade80" font-family="Barlow Condensed" font-weight="700">8.6</text>
+
+      <!-- VALUE — home plate area bottom -->
+      <line x1="290" y1="340" x2="290" y2="360" stroke="rgba(255,255,255,0.15)" stroke-width="1"></line>
+      <rect x="244" y="358" width="92" height="32" rx="6" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.12)" stroke-width="1"></rect>
+      <text x="268" y="378" font-size="9" fill="rgba(255,255,255,0.5)" font-family="Barlow Condensed" font-weight="500" letter-spacing="1">VALUE</text>
+      <circle id="sv-val-bg" cx="320" cy="374" r="11" fill="rgba(34,197,94,0.25)" stroke="rgba(34,197,94,0.6)" stroke-width="1"></circle>
+      <text id="sv-val-val" x="320" y="378" text-anchor="middle" font-size="11" fill="#4ade80" font-family="Barlow Condensed" font-weight="700">7.6</text>
+
+      <!-- Left team color accent -->
+      <line x1="40" y1="180" x2="40" y2="340" stroke="var(--team-a)" stroke-width="3" opacity="0.3" stroke-linecap="round"></line>
+      <!-- Right team color accent -->
+      <line x1="540" y1="180" x2="540" y2="340" stroke="var(--team-b)" stroke-width="3" opacity="0.3" stroke-linecap="round"></line>
+    </svg>
+  </div>
+
+  <!-- Team B panel (right) -->
+  <div class="team-panel b anim d4" id="panelB"><div class="tp-header">Energy City Cactus Rats</div><div class="tp-big-stat">
+    <div class="stat-label">CSAT</div>
+    <div class="stat-value" style="color:var(--green)">7.6 <span style="font-size:14px;color:var(--text-muted);font-family:Barlow,sans-serif;font-weight:400">/ 10</span></div>
+  </div><div style="display:flex;gap:8px;">
+    <div class="tp-big-stat" style="flex:1">
+      <div class="stat-label">NPS</div>
+      <div class="stat-value" style="font-size:24px;color:var(--amber)">31</div>
+    </div>
+    <div class="tp-big-stat" style="flex:1">
+      <div class="stat-label">Return %</div>
+      <div class="stat-value" style="font-size:24px">74%</div>
+    </div>
+  </div><div class="tp-cat">
+      <div class="tp-cat-score" style="background:rgba(34,197,94,0.2);color:var(--green);border-color:var(--green)">8.2</div>
+      <div class="tp-cat-info">
+        <div class="tp-cat-name">Atmosphere</div>
+        <div class="tp-cat-bar"><div class="tp-cat-bar-fill" style="width:82%;background:var(--green)"></div></div>
+      </div>
+    </div><div class="tp-cat">
+      <div class="tp-cat-score" style="background:rgba(245,158,11,0.2);color:var(--amber);border-color:var(--amber)">6.8</div>
+      <div class="tp-cat-info">
+        <div class="tp-cat-name">Entertainment</div>
+        <div class="tp-cat-bar"><div class="tp-cat-bar-fill" style="width:68%;background:var(--amber)"></div></div>
+      </div>
+    </div><div class="tp-cat">
+      <div class="tp-cat-score" style="background:rgba(239,68,68,0.2);color:var(--red);border-color:var(--red)">5.8</div>
+      <div class="tp-cat-info">
+        <div class="tp-cat-name">Food &amp; bev</div>
+        <div class="tp-cat-bar"><div class="tp-cat-bar-fill" style="width:58%;background:var(--red)"></div></div>
+      </div>
+    </div><div class="tp-cat">
+      <div class="tp-cat-score" style="background:rgba(34,197,94,0.2);color:var(--green);border-color:var(--green)">9.0</div>
+      <div class="tp-cat-info">
+        <div class="tp-cat-name">Staff</div>
+        <div class="tp-cat-bar"><div class="tp-cat-bar-fill" style="width:90%;background:var(--green)"></div></div>
+      </div>
+    </div><div class="tp-cat">
+      <div class="tp-cat-score" style="background:rgba(34,197,94,0.2);color:var(--green);border-color:var(--green)">8.3</div>
+      <div class="tp-cat-info">
+        <div class="tp-cat-name">Value</div>
+        <div class="tp-cat-bar"><div class="tp-cat-bar-fill" style="width:83%;background:var(--green)"></div></div>
+      </div>
+    </div><div style="margin-top:6px;padding:10px 12px;background:var(--panel-glass);border:1px solid var(--panel-border);border-radius:8px;">
+    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;font-weight:500;margin-bottom:6px;">vs league average</div><div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+      <span style="color:rgba(255,255,255,0.6)">Atmosphere</span>
+      <span style="font-weight:600;color:var(--green)">+0.2</span>
+    </div><div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+      <span style="color:rgba(255,255,255,0.6)">Entertainment</span>
+      <span style="font-weight:600;color:var(--red)">-0.5</span>
+    </div><div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+      <span style="color:rgba(255,255,255,0.6)">Food &amp; bev</span>
+      <span style="font-weight:600;color:var(--red)">-1.1</span>
+    </div><div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+      <span style="color:rgba(255,255,255,0.6)">Staff</span>
+      <span style="font-weight:600;color:var(--green)">+0.4</span>
+    </div><div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+      <span style="color:rgba(255,255,255,0.6)">Value</span>
+      <span style="font-weight:600;color:var(--green)">+0.7</span>
+    </div></div></div>
+</div>
+
+<!-- League overall section -->
+<div class="league-section anim d5">
+  <div class="league-header">League overall — 2025 season</div>
+  <div class="league-grid" id="leagueGrid">
+    <div class="league-card">
+      <div class="lc-label">Total responses</div>
+      <div class="lc-value">3,853</div>
+      <div class="lc-sub">across 12 teams</div>
+    </div>
+    <div class="league-card">
+      <div class="lc-label">League CSAT</div>
+      <div class="lc-value" style="color:var(--green)">7.7 <span style="font-size:15px;color:var(--text-muted);font-family:Barlow,sans-serif;font-weight:400">/ 10</span></div>
+      <div class="lc-change up">+0.6 vs last season</div>
+    </div>
+    <div class="league-card">
+      <div class="lc-label">League NPS</div>
+      <div class="lc-value" style="color:var(--amber)">49</div>
+      <div class="lc-change up">+5 vs last season</div>
+    </div>
+    <div class="league-card">
+      <div class="lc-label">Return likelihood</div>
+      <div class="lc-value">77%</div>
+      <div class="lc-change up">+3% vs last season</div>
+    </div>
+  </div>
+  <div class="league-cats" id="leagueCats"><div class="league-cat-card">
+      <div class="lcc-label">Atmosphere</div>
+      <div class="lcc-score" style="color:var(--green)">8.0</div>
+      <div class="lcc-bar"><div class="lcc-bar-fill" style="width:80%;background:var(--green)"></div></div>
+    </div><div class="league-cat-card">
+      <div class="lcc-label">Entertainment</div>
+      <div class="lcc-score" style="color:var(--amber)">7.3</div>
+      <div class="lcc-bar"><div class="lcc-bar-fill" style="width:73%;background:var(--amber)"></div></div>
+    </div><div class="league-cat-card">
+      <div class="lcc-label">Food &amp; bev</div>
+      <div class="lcc-score" style="color:var(--amber)">6.9</div>
+      <div class="lcc-bar"><div class="lcc-bar-fill" style="width:69%;background:var(--amber)"></div></div>
+    </div><div class="league-cat-card">
+      <div class="lcc-label">Staff</div>
+      <div class="lcc-score" style="color:var(--green)">8.6</div>
+      <div class="lcc-bar"><div class="lcc-bar-fill" style="width:86%;background:var(--green)"></div></div>
+    </div><div class="league-cat-card">
+      <div class="lcc-label">Value</div>
+      <div class="lcc-score" style="color:var(--green)">7.6</div>
+      <div class="lcc-bar"><div class="lcc-bar-fill" style="width:76%;background:var(--green)"></div></div>
+    </div></div>
+</div>
+
+<div class="footer">WCBL Fan Experience Benchmark • Sample data for demonstration • Powered by post-game satisfaction surveys</div>
+
+<script>
+const teams = [
+  'Brooks Bombers','Energy City Cactus Rats','Fort McMurray Giants','Lethbridge Bulls',
+  'Medicine Hat Mavericks','Moose Jaw Miller Express','Okotoks Dawgs','Regina Red Sox',
+  'Saskatoon Berries',"Swift Current 57's",'Sylvan Lake Gulls','Weyburn Beavers'
+];
+
+function seeded(s){return function(){s=(s*16807)%2147483647;return(s-1)/2147483646}}
+const rng=seeded(42);
+function rand(a,b){return Math.round((rng()*(b-a)+a)*10)/10}
+function randInt(a,b){return Math.round(rng()*(b-a)+a)}
+
+const teamData=teams.map(name=>{
+  const atm=rand(6.8,9.4),ent=rand(6.0,9.0),fb=rand(5.5,8.6),st=rand(7.0,9.5),val=rand(5.8,8.6);
+  const csat=Math.round((atm+ent+fb+st+val)/5*10)/10;
+  return{name,responses:randInt(180,540),csat,nps:randInt(18,72),returnLikelihood:randInt(68,94),
+    atmosphere:atm,entertainment:ent,foodBev:fb,staff:st,value:val};
+});
+
+const lAvg=k=>Math.round(teamData.reduce((s,t)=>s+t[k],0)/12*10)/10;
+const lAvgInt=k=>Math.round(teamData.reduce((s,t)=>s+t[k],0)/12);
+const lSum=k=>teamData.reduce((s,t)=>s+t[k],0);
+
+const leagueStats={
+  responses:lSum('responses'),csat:lAvg('csat'),nps:lAvgInt('nps'),ret:lAvgInt('returnLikelihood'),
+  atmosphere:lAvg('atmosphere'),entertainment:lAvg('entertainment'),foodBev:lAvg('foodBev'),
+  staff:lAvg('staff'),value:lAvg('value')
+};
+
+function scoreColor(v){return v>=7.5?'var(--green)':v>=6.5?'var(--amber)':'var(--red)'}
+function scoreBg(v){return v>=7.5?'rgba(34,197,94,0.2)':v>=6.5?'rgba(245,158,11,0.2)':'rgba(239,68,68,0.2)'}
+
+const selA=document.getElementById('teamA');
+const selB=document.getElementById('teamB');
+teams.forEach((t,i)=>{
+  selA.innerHTML+=`<option value="${t}" ${i===0?'selected':''}>${t}</option>`;
+  selB.innerHTML+=`<option value="${t}" ${i===1?'selected':''}>${t}</option>`;
+});
+
+const cats=[
+  {key:'atmosphere',label:'Atmosphere',icon:'🏟'},
+  {key:'entertainment',label:'Entertainment',icon:'🎤'},
+  {key:'foodBev',label:'Food & bev',icon:'🍔'},
+  {key:'staff',label:'Staff',icon:'👋'},
+  {key:'value',label:'Value',icon:'🎟'}
+];
+
+function buildPanel(el, team, side){
+  const t=teamData.find(d=>d.name===team);
+  const color=side==='a'?'var(--team-a)':'var(--team-b)';
+
+  let html=`<div class="tp-header">${t.name}</div>`;
+
+  // Big stats
+  html+=`<div class="tp-big-stat">
+    <div class="stat-label">CSAT</div>
+    <div class="stat-value" style="color:${scoreColor(t.csat)}">${t.csat.toFixed(1)} <span style="font-size:14px;color:var(--text-muted);font-family:Barlow,sans-serif;font-weight:400">/ 10</span></div>
+  </div>`;
+  html+=`<div style="display:flex;gap:8px;">
+    <div class="tp-big-stat" style="flex:1">
+      <div class="stat-label">NPS</div>
+      <div class="stat-value" style="font-size:24px;color:${t.nps>=50?'var(--green)':t.nps>=30?'var(--amber)':'var(--red)'}">${t.nps}</div>
+    </div>
+    <div class="tp-big-stat" style="flex:1">
+      <div class="stat-label">Return %</div>
+      <div class="stat-value" style="font-size:24px">${t.returnLikelihood}%</div>
+    </div>
+  </div>`;
+
+  // Category scores
+  cats.forEach(c=>{
+    const v=t[c.key];
+    html+=`<div class="tp-cat">
+      <div class="tp-cat-score" style="background:${scoreBg(v)};color:${scoreColor(v)};border-color:${scoreColor(v)}">${v.toFixed(1)}</div>
+      <div class="tp-cat-info">
+        <div class="tp-cat-name">${c.label}</div>
+        <div class="tp-cat-bar"><div class="tp-cat-bar-fill" style="width:${v*10}%;background:${scoreColor(v)}"></div></div>
+      </div>
+    </div>`;
+  });
+
+  // Vs league avg
+  html+=`<div style="margin-top:6px;padding:10px 12px;background:var(--panel-glass);border:1px solid var(--panel-border);border-radius:8px;">
+    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;font-weight:500;margin-bottom:6px;">vs league average</div>`;
+  cats.forEach(c=>{
+    const diff=Math.round((t[c.key]-leagueStats[c.key])*10)/10;
+    const diffColor=diff>0?'var(--green)':diff<0?'var(--red)':'var(--text-muted)';
+    const diffStr=diff>0?'+'+diff.toFixed(1):diff.toFixed(1);
+    html+=`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+      <span style="color:rgba(255,255,255,0.6)">${c.label}</span>
+      <span style="font-weight:600;color:${diffColor}">${diffStr}</span>
+    </div>`;
+  });
+  html+=`</div>`;
+
+  el.innerHTML=html;
+}
+
+function buildLeague(){
+  const lg=document.getElementById('leagueGrid');
+  lg.innerHTML=`
+    <div class="league-card">
+      <div class="lc-label">Total responses</div>
+      <div class="lc-value">${leagueStats.responses.toLocaleString()}</div>
+      <div class="lc-sub">across 12 teams</div>
+    </div>
+    <div class="league-card">
+      <div class="lc-label">League CSAT</div>
+      <div class="lc-value" style="color:${scoreColor(leagueStats.csat)}">${leagueStats.csat.toFixed(1)} <span style="font-size:15px;color:var(--text-muted);font-family:Barlow,sans-serif;font-weight:400">/ 10</span></div>
+      <div class="lc-change up">+0.6 vs last season</div>
+    </div>
+    <div class="league-card">
+      <div class="lc-label">League NPS</div>
+      <div class="lc-value" style="color:${leagueStats.nps>=50?'var(--green)':leagueStats.nps>=30?'var(--amber)':'var(--red)'}">${leagueStats.nps}</div>
+      <div class="lc-change up">+5 vs last season</div>
+    </div>
+    <div class="league-card">
+      <div class="lc-label">Return likelihood</div>
+      <div class="lc-value">${leagueStats.ret}%</div>
+      <div class="lc-change up">+3% vs last season</div>
+    </div>
+  `;
+
+  const lc=document.getElementById('leagueCats');
+  lc.innerHTML=cats.map(c=>{
+    const v=leagueStats[c.key];
+    return`<div class="league-cat-card">
+      <div class="lcc-label">${c.label}</div>
+      <div class="lcc-score" style="color:${scoreColor(v)}">${v.toFixed(1)}</div>
+      <div class="lcc-bar"><div class="lcc-bar-fill" style="width:${v*10}%;background:${scoreColor(v)}"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function svgScoreColor(v){return v>=7.5?'#4ade80':v>=6.5?'#fbbf24':'#f87171'}
+function svgBgColor(v){return v>=7.5?'rgba(34,197,94,0.25)':v>=6.5?'rgba(245,158,11,0.25)':'rgba(239,68,68,0.25)'}
+function svgStrokeColor(v){return v>=7.5?'rgba(34,197,94,0.6)':v>=6.5?'rgba(245,158,11,0.6)':'rgba(239,68,68,0.6)'}
+
+function buildStadium(){
+  const map=[
+    {val:'sv-atm-val',bg:'sv-atm-bg',key:'atmosphere'},
+    {val:'sv-ent-val',bg:'sv-ent-bg',key:'entertainment'},
+    {val:'sv-fb-val',bg:'sv-fb-bg',key:'foodBev'},
+    {val:'sv-st-val',bg:null,key:'staff'},
+    {val:'sv-val-val',bg:'sv-val-bg',key:'value'}
+  ];
+  map.forEach(m=>{
+    const v=leagueStats[m.key];
+    const el=document.getElementById(m.val);
+    if(el){el.textContent=v.toFixed(1);el.setAttribute('fill',svgScoreColor(v));}
+    if(m.bg){
+      const bg=document.getElementById(m.bg);
+      if(bg){bg.setAttribute('fill',svgBgColor(v));bg.setAttribute('stroke',svgStrokeColor(v));}
+    }
+  });
+}
+
+function update(){
+  buildPanel(document.getElementById('panelA'),selA.value,'a');
+  buildPanel(document.getElementById('panelB'),selB.value,'b');
+}
+
+selA.addEventListener('change',update);
+selB.addEventListener('change',update);
+
+update();
+buildLeague();
+buildStadium();
+</script>
+
+
+</body></html>
