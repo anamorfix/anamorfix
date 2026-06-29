@@ -84,7 +84,7 @@ const App = {
   PASS:"2026", deviceId:"kiosk-01",
   drag:null, _lastScreen:"attract", _countDone:false,
   stream:null, recorder:null, chunks:null,
-  idleT:null, warnI:null, thanksT:null, recTimer:null, holdI:null, promptT:null, countRAF:null,
+  idleT:null, warnI:null, thanksT:null, recTimer:null, holdI:null, promptT:null, countRAF:null, sendT:null,
 
   state:null,
 
@@ -94,13 +94,15 @@ const App = {
       metrics:{interactions:0, videoConsents:0, recruitViews:0, sessions:0, lastExport:null},
       passEntry:"", passErr:false, editIdx:-1, draft:null, holdPct:0,
       idleWarn:false, warnLeft:8, recording:false, recSec:0, camDenied:false,
-      countDisp:0, revealGrow:0, revealPrompt:false, reviewLen:"short" };
+      countDisp:0, revealGrow:0, revealPrompt:false, reviewLen:"short",
+      recruitPhone:"", recruitSent:false, recruitSending:false };
     // load persisted (try/catch — as original)
     try{ const raw=localStorage.getItem(this.STORE); if(raw){ this.state.counts=JSON.parse(raw); } else { localStorage.setItem(this.STORE, JSON.stringify(this.SEED)); } }catch(e){}
     try{ const cfg=JSON.parse(localStorage.getItem(this.CFG)||"null"); if(cfg&&cfg.questions&&cfg.questions.length){ this.state.questions=cfg.questions; this.state.configVersion=cfg.version||1; } }catch(e){}
     try{ const met=JSON.parse(localStorage.getItem(this.MET)||"null"); if(met){ this.state.metrics=Object.assign({interactions:0,videoConsents:0,recruitViews:0,sessions:0,lastExport:null},met); } }catch(e){}
     window.addEventListener("pointerdown", ()=>this.armIdle(), true);
     this.fit(); window.addEventListener("resize", ()=>this.fit());
+    window.addEventListener("orientationchange", ()=>setTimeout(()=>this.fit(), 250));
     this.render();
   },
 
@@ -113,6 +115,16 @@ const App = {
   fit(){
     const s=Math.min(window.innerWidth/1180, window.innerHeight/820);
     document.getElementById("screen").style.transform="scale("+s+")";
+  },
+  bgFor(){
+    if(this.state.idleWarn) return "#0d1518";
+    switch(this.state.screen){
+      case "attract": case "capture": case "review": case "lock": return "var(--insight-black)";
+      case "recruit": return "var(--measured-purple)";
+      case "thanks": return "var(--anchor-green)";
+      case "admin": case "editq": return "var(--bg-subtle)";
+      default: return "var(--system-white)";
+    }
   },
 
   /* ---------- idle ---------- */
@@ -131,9 +143,9 @@ const App = {
     const m=Object.assign({}, this.state.metrics, {sessions:(this.state.metrics.sessions||0)+1}); this.saveMetrics(m);
     this.setState({screen:"question", qIndex:0, phase:"asking", metrics:m}); this.armIdle(); },
   restart(){ clearInterval(this.warnI); clearTimeout(this.thanksT); clearTimeout(this.idleT); clearInterval(this.recTimer);
-    clearInterval(this.holdI); clearTimeout(this.promptT); cancelAnimationFrame(this.countRAF);
+    clearInterval(this.holdI); clearTimeout(this.promptT); clearTimeout(this.sendT); cancelAnimationFrame(this.countRAF);
     this.drag=null; this._countDone=false; this.stopCamera();
-    this.setState({screen:"attract", phase:"asking", qIndex:0, lastAnswer:null, idleWarn:false, recording:false, recSec:0, camDenied:false, holdPct:0, revealPrompt:false}); },
+    this.setState({screen:"attract", phase:"asking", qIndex:0, lastAnswer:null, idleWarn:false, recording:false, recSec:0, camDenied:false, holdPct:0, revealPrompt:false, recruitPhone:"", recruitSent:false, recruitSending:false}); },
   nextFromReveal(){ clearTimeout(this.promptT); cancelAnimationFrame(this.countRAF); this._countDone=false;
     const ni=this.state.qIndex+1;
     if(ni>=this.state.questions.length){ this.setState({screen:"video", revealPrompt:false}); }
@@ -141,10 +153,10 @@ const App = {
     this.armIdle(); },
   videoYes(){ const m=Object.assign({}, this.state.metrics, {videoConsents:(this.state.metrics.videoConsents||0)+1}); this.saveMetrics(m);
     this.setState({screen:"capture", recording:false, recSec:0, camDenied:false, holdPct:0, metrics:m}); },
-  videoNo(){ this.setState({screen:"recruit"}); this.armIdle(); },
+  videoNo(){ this.setState({screen:"recruit", recruitPhone:"", recruitSent:false, recruitSending:false}); this.armIdle(); },
   cancelCapture(){ this.stopCamera(); this.setState({screen:"recruit", recording:false, recSec:0}); this.armIdle(); },
   recordAgain(){ this.setState({screen:"capture", recording:false, recSec:0, camDenied:false}); },
-  reviewDone(){ this.setState({screen:"recruit"}); this.armIdle(); },
+  reviewDone(){ this.setState({screen:"recruit", recruitPhone:"", recruitSent:false, recruitSending:false}); this.armIdle(); },
   recruitDone(){ this.toThanks(); },
   toThanks(){ clearTimeout(this.idleT); this.setState({screen:"thanks"}); clearTimeout(this.thanksT); this.thanksT=setTimeout(()=>this.restart(), 14000); },
 
@@ -241,6 +253,15 @@ const App = {
     for(let r=0;r<n;r++){ for(let c=0;c<n;c++){ const inF=(r<8&&c<8)||(r<8&&c>=n-8)||(r>=n-8&&c<8); if(inF) continue; if(rnd()>0.55) ctx.fillRect(c*s, r*s, s, s); }}
     const finder=(ox,oy)=>{ ctx.fillStyle="#1a2b30"; ctx.fillRect(ox*s,oy*s,7*s,7*s); ctx.fillStyle="#fffcfa"; ctx.fillRect((ox+1)*s,(oy+1)*s,5*s,5*s); ctx.fillStyle="#1a2b30"; ctx.fillRect((ox+2)*s,(oy+2)*s,3*s,3*s); };
     finder(0,0); finder(n-7,0); finder(0,n-7); },
+
+  /* ---------- recruit (SMS link) ---------- */
+  formatPhone(d){ if(!d) return ""; let s="("+d.slice(0,3); if(d.length>3) s+=") "+d.slice(3,6); if(d.length>6) s+="-"+d.slice(6,10); return s; },
+  phonePress(k){ if(k==="del"){ this.setState(s=>({recruitPhone:(s.recruitPhone||"").slice(0,-1)})); return; }
+    if(k==="clr"){ this.setState({recruitPhone:""}); return; }
+    this.setState(s=>({recruitPhone:((s.recruitPhone||"")+k).replace(/\D/g,"").slice(0,10)})); this.armIdle(); },
+  sendLink(){ if((this.state.recruitPhone||"").length!==10 || this.state.recruitSending) return;
+    this.setState({recruitSending:true}); clearTimeout(this.sendT);
+    this.sendT=setTimeout(()=>this.setState({recruitSending:false, recruitSent:true}), 1300); },
 
   /* ---------- admin ---------- */
   saveMetrics(m){ try{ localStorage.setItem(this.MET, JSON.stringify(m)); }catch(e){} },
@@ -355,6 +376,7 @@ const App = {
     else if(v.isEditq) html=this.scEditor(v);
     if(v.idleWarn) html += this.scIdle(v);
     document.getElementById("screen").innerHTML=html;
+    const vp=document.getElementById("viewport"); if(vp) vp.style.background=this.bgFor();
     this.postRender(v);
   },
 
@@ -368,7 +390,6 @@ const App = {
     if(!(v.isQuestion && v.isRevealed)) this._countDone=false;
     if(prev!=="capture" && cur==="capture") this.startCamera();
     if(cur==="capture" && this.stream){ const vid=document.getElementById("camVideo"); if(vid && vid.srcObject!==this.stream){ vid.srcObject=this.stream; vid.play&&vid.play().catch(()=>{}); } }
-    if(prev!=="recruit" && cur==="recruit"){ const c=document.getElementById("qr"); if(c) this.drawQR(c); }
   },
 
   scAttract(){ return `
@@ -551,27 +572,44 @@ const App = {
       <button onclick="App.reviewDone()" style="font-family:inherit;cursor:pointer;background:var(--system-white);color:var(--insight-black);border:none;font-weight:800;font-size:22px;padding:16px 52px;border-radius:999px;">all done</button></div>
   </div>`; },
 
-  scRecruit(){ return `
-  <div style="position:absolute;inset:0;background:var(--measured-purple);color:var(--system-white);display:flex;align-items:stretch;overflow:hidden;">
-    <div style="position:absolute;width:300px;height:300px;border-radius:50%;background:var(--purple-axis);opacity:.18;bottom:-120px;left:-80px;"></div>
-    <div style="flex:1;padding:64px;display:flex;flex-direction:column;justify-content:center;position:relative;box-sizing:border-box;">
-      <img src="${LOGOS.swWhite}" alt="SaskWatch" style="height:38px;align-self:flex-start;margin-bottom:20px;" />
-      <div style="font-size:13px;letter-spacing:.16em;text-transform:lowercase;opacity:.6;font-weight:600;">last thing — you're already done</div>
-      <div style="font-weight:900;font-size:60px;line-height:1.0;letter-spacing:-.03em;margin-top:12px;max-width:13ch;">want your say to count all year?</div>
-      <div style="font-size:22px;font-weight:300;line-height:1.4;margin-top:22px;max-width:32ch;opacity:.92;">Saskatchewan's research panel — real questions between festivals, real rewards, your voice in the mix.</div>
-      <div style="display:flex;align-items:center;gap:24px;margin-top:40px;">
-        <button onclick="App.recruitDone()" style="font-family:inherit;cursor:pointer;background:var(--signal-yellow);color:var(--insight-black);border:none;font-weight:800;font-size:24px;padding:20px 52px;border-radius:999px;">finish</button>
-        <span style="font-size:16px;opacity:.7;">scan whenever you like — no rush.</span></div>
-    </div>
-    <div style="width:460px;background:var(--system-white);color:var(--insight-black);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px;box-sizing:border-box;position:relative;">
-      <div style="font-weight:800;font-size:26px;letter-spacing:-.01em;margin-bottom:6px;">scan to join</div>
-      <div style="font-size:16px;color:var(--fg-tertiary);margin-bottom:26px;text-align:center;">opens the sign-up on <b style="font-weight:700;color:var(--insight-black);">your own phone</b></div>
-      <canvas id="qr" width="240" height="240" style="width:240px;height:240px;border-radius:8px;"></canvas>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:26px;background:color-mix(in srgb, var(--metric-blue) 22%, var(--system-white));padding:12px 18px;border-radius:8px;">
-        <span style="width:10px;height:10px;border-radius:50%;background:var(--insight-black);flex:none;"></span>
-        <span style="font-size:14px;line-height:1.3;color:var(--fg-secondary);">we never store your email on this screen.</span></div>
-    </div>
-  </div>`; },
+  scRecruit(){
+    const digits=this.state.recruitPhone||"";
+    const display = digits ? this.formatPhone(digits) : "(___) ___-____";
+    const phoneColor = digits ? "var(--insight-black)" : "var(--fg-muted)";
+    const valid = digits.length===10, sending=this.state.recruitSending;
+    const sendLabel = sending ? "sending\u2026" : "text me the link";
+    const sendBtn = "margin-top:14px;font-family:inherit;cursor:"+((valid&&!sending)?"pointer":"default")+";width:100%;border:none;border-radius:999px;padding:16px;font-weight:800;font-size:19px;background:"+(valid?"var(--insight-black)":"color-mix(in srgb, var(--insight-black) 22%, var(--system-white))")+";color:"+(valid?"var(--system-white)":"var(--fg-muted)")+";";
+    const keyStyle = (k)=>"font-family:inherit;font-size:"+((k==="clr"||k==="del")?"15px":"24px")+";font-weight:700;background:var(--system-white);border:2px solid color-mix(in srgb, var(--insight-black) 16%, transparent);border-radius:12px;color:var(--insight-black);cursor:pointer;height:54px;display:flex;align-items:center;justify-content:center;text-transform:lowercase;";
+    const pad = ["1","2","3","4","5","6","7","8","9","clr","0","del"].map(k=>`<button onclick="App.phonePress('${k}')" style="${keyStyle(k)}">${k==="del"?"\u232b":k}</button>`).join("");
+    const right = this.state.recruitSent ? `
+      <div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:16px;">
+        <div style="width:92px;height:92px;border-radius:50%;background:var(--anchor-green);display:flex;align-items:center;justify-content:center;"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#1a2b30" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"></path></svg></div>
+        <div style="font-weight:800;font-size:30px;letter-spacing:-.02em;">link sent</div>
+        <div style="font-size:18px;color:var(--fg-secondary);line-height:1.4;">check your phone for a text from SaskWatch and tap the link to finish signing up.</div>
+        <div style="font-size:13px;color:var(--fg-muted);">sent to ${esc(display)}</div>
+      </div>` : `
+      <div style="font-weight:800;font-size:25px;letter-spacing:-.01em;margin-bottom:4px;">text me the link</div>
+      <div style="font-size:15px;color:var(--fg-tertiary);margin-bottom:18px;">we'll send a one-time sign-up link to your phone.</div>
+      <div style="font-size:12px;font-weight:700;text-transform:lowercase;letter-spacing:.06em;color:var(--fg-tertiary);margin-bottom:6px;">mobile number</div>
+      <div style="height:58px;border:2px solid var(--insight-black);border-radius:12px;display:flex;align-items:center;padding:0 18px;font-size:25px;font-weight:700;margin-bottom:14px;color:${phoneColor};">${esc(display)}</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px;">${pad}</div>
+      <button onclick="App.sendLink()" style="${sendBtn}">${sendLabel}</button>
+      <div style="font-size:11px;line-height:1.45;color:var(--fg-muted);margin-top:12px;">by providing your number you consent to receive a one-time SMS with the SaskWatch sign-up link from Insightrix. msg &amp; data rates may apply; reply STOP to opt out. your number is sent securely to SaskWatch and isn't stored on this device.</div>`;
+    return `
+    <div style="position:absolute;inset:0;background:var(--measured-purple);color:var(--system-white);display:flex;align-items:stretch;overflow:hidden;">
+      <div style="position:absolute;width:300px;height:300px;border-radius:50%;background:var(--purple-axis);opacity:.18;bottom:-120px;left:-80px;"></div>
+      <div style="flex:1;padding:64px;display:flex;flex-direction:column;justify-content:center;position:relative;box-sizing:border-box;">
+        <img src="${LOGOS.swWhite}" alt="SaskWatch" style="height:38px;align-self:flex-start;margin-bottom:20px;" />
+        <div style="font-size:13px;letter-spacing:.16em;text-transform:lowercase;opacity:.6;font-weight:600;">last thing — you're already done</div>
+        <div style="font-weight:900;font-size:60px;line-height:1.0;letter-spacing:-.03em;margin-top:12px;max-width:13ch;">want your say to count all year?</div>
+        <div style="font-size:22px;font-weight:300;line-height:1.4;margin-top:22px;max-width:32ch;opacity:.92;">Saskatchewan's research panel — real questions between festivals, real rewards, your voice in the mix.</div>
+        <div style="display:flex;align-items:center;gap:24px;margin-top:40px;">
+          <button onclick="App.recruitDone()" style="font-family:inherit;cursor:pointer;background:var(--signal-yellow);color:var(--insight-black);border:none;font-weight:800;font-size:24px;padding:20px 52px;border-radius:999px;">finish</button>
+          <span style="font-size:16px;opacity:.7;">no pressure — it's a one-time text.</span></div>
+      </div>
+      <div style="width:496px;background:var(--system-white);color:var(--insight-black);display:flex;flex-direction:column;justify-content:center;padding:38px 44px;box-sizing:border-box;position:relative;">${right}</div>
+    </div>`;
+  },
 
   scThanks(v){ const conf=v.confetti.map(c=>`<span style="${styleStr(c.style)}"></span>`).join("");
     return `
