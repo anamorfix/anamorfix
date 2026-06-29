@@ -44,6 +44,8 @@ input{font-family:inherit;}
 @keyframes fadeOverlay{from{background:rgba(26,43,48,0)}to{background:rgba(26,43,48,0.2)}}
 @keyframes btnPop{0%{transform:scale(.8)}100%{transform:scale(1)}}
 @keyframes confettiFall{0%{transform:translateY(-40px) rotate(0);opacity:0}10%{opacity:1}100%{transform:translateY(640px) rotate(220deg);opacity:0}}
+@keyframes cardNudge{0%,14%,100%{transform:translateX(0) rotate(0)}5%{transform:translateX(-11px) rotate(-1.6deg)}10%{transform:translateX(11px) rotate(1.6deg)}}
+@keyframes revealIn{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;animation-iteration-count:1!important;}}
 .likert-seg:hover{background:var(--insight-black)!important;color:var(--system-white)!important;transform:translateY(-6px);}
 </style>
@@ -70,159 +72,305 @@ const LOGOS = {
 
 function styleStr(o){ if(!o) return ""; let s=""; for(const k in o){ s += k.replace(/[A-Z]/g,m=>"-"+m.toLowerCase()) + ":" + o[k] + ";"; } return s; }
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
-
 const App = {
-  DEFAULT_Q:[
-    { id:"music", type:"swipe", text:"live music is the main reason i\u2019m here today", no:{key:"no",label:"not really"}, yes:{key:"yes",label:"absolutely"}, randomize:false, showDist:true, minN:5 },
-    { id:"food", type:"likert", text:"how are the food options this year?", scale:[{key:"1",label:"not great"},{key:"2",label:"meh"},{key:"3",label:"good"},{key:"4",label:"great"},{key:"5",label:"amazing"}], randomize:false, showDist:true, minN:5 },
-    { id:"discover", type:"swipe", text:"i found an artist today i\u2019ll listen to again", no:{key:"no",label:"nope"}, yes:{key:"yes",label:"yes!"}, randomize:false, showDist:true, minN:5 },
-    { id:"getaround", type:"likert", text:"how easy is it to get around the grounds?", scale:[{key:"1",label:"a maze"},{key:"2",label:"tricky"},{key:"3",label:"okay"},{key:"4",label:"easy"},{key:"5",label:"a breeze"}], randomize:false, showDist:true, minN:5 },
-    { id:"recommend", type:"swipe", text:"i\u2019d tell a friend to come next year", no:{key:"no",label:"maybe not"}, yes:{key:"yes",label:"for sure"}, randomize:false, showDist:true, minN:5 }
-  ],
-  SEED:{ music:{yes:198,no:34}, food:{"1":8,"2":22,"3":61,"4":94,"5":71}, discover:{yes:144,no:73}, getaround:{"1":5,"2":31,"3":78,"4":96,"5":42}, recommend:{yes:221,no:19} },
-  STORE:"pulse_counts_v1", CFG:"pulse_config_v1", RESP:"pulse_responses_v1", MET:"pulse_metrics_v1",
+  /* storage keys — v2 */
+  STORE:"pulse_counts_v2", RESP:"pulse_responses_v2", MET:"pulse_metrics_v1", SET:"pulse_settings_v1",
+  SURV:"pulse_surveys_v2", ACT:"pulse_active_v2",
   PASS:"2026", deviceId:"kiosk-01",
-  drag:null, _lastScreen:"attract", _countDone:false,
-  stream:null, recorder:null, chunks:null,
-  idleT:null, warnI:null, thanksT:null, recTimer:null, holdI:null, promptT:null, countRAF:null, sendT:null,
 
+  SEED:{
+    q1_overall:{"1":4,"2":9,"3":28,"4":61,"5":44},
+    q2_vibe:{yes:88,no:74},
+    q3_artist:{a:41,b:33,c:29,d:22,k:18},
+    q4_future:{yes:52,no:96},
+    q5_return:{"1":1,"2":1,"3":4,"4":12,"5":14,"6":33,"7":58},
+    q6_genres:{__resp:120,a:64,b:71,c:38,d:41,e:33,f:18,g:29,h:12,i:21,j:47,k:26,l:15,m:6,n:44}
+  },
+
+  drag:null, _lastScreen:"attract", _countDone:false, _sliderDrag:false, _pendSlider:null,
+  stream:null, recorder:null, chunks:null,
+  idleT:null, warnI:null, thanksT:null, recTimer:null, promptT:null, sendT:null, sendT2:null, countRAF:null,
+  sessionId:null, seqIndex:0, qStart:0, sessionAnswers:{},
   state:null,
 
+  defaultText(){ return {
+    attractEyebrow:"with saskwatch \u00b7 exchange folk festival",
+    attractTitle:"tap to have your say",
+    attractSub:"6 quick questions \u00b7 about 2 minutes \u00b7 totally anonymous",
+    consentEyebrow:"before we start",
+    consentTitle:"a quick, anonymous check-in.",
+    consentCta:"let\u2019s go",
+    consentDecline:"no thanks",
+    bullets:[
+      {bold:"who\u2019s asking \u2014", text:"Insightrix & SaskWatch are gathering festival opinions today."},
+      {bold:"anonymous \u2014", text:"your taps are never tied to your name."},
+      {bold:"your call \u2014", text:"stop anytime. just walk away and it clears."},
+      {bold:"finish & you\u2019re in \u2014", text:"complete the set to enter the festival prize draw."}
+    ],
+    videoEyebrow:"one more thing \u2014 optional",
+    videoTitle:"want to tell us more, on camera?",
+    videoBody:"record a quick clip right here at the booth \u2014 about the music, the food, your day. 18+, and you can stop anytime.",
+    videoYes:"yes, i\u2019m in",
+    videoNo:"no thanks",
+    recruitEyebrow:"last thing \u2014 you\u2019re already done",
+    recruitTitle:"want your say to count all year?",
+    recruitBody:"Saskatchewan\u2019s research panel \u2014 real questions between festivals, real rewards, your voice in the mix.",
+    recruitCta:"finish",
+    recruitPanelTitle:"text me the link",
+    recruitPanelSub:"we\u2019ll send a one-time sign-up link to your phone.",
+    thanksTitle:"thanks for having your say.",
+    thanksBody:"you\u2019re entered in the festival draw. enjoy the rest of the Exchange."
+  }; },
+  defaultBrand(){ return { logo:null, primary:"#1a2b30", accent:"#d97340", button:"#1a2b30" }; },
+  defaultPages(){ return { consent:true, video:true, recruit:true, thanks:true }; },
+  defaultQuestions(){ return [
+    { id:"q1_overall", type:"likert", likertMode:"buttons", text:"how would you rate your overall experience at the festival today?", scale:[{key:"1",label:"very poor"},{key:"2",label:"poor"},{key:"3",label:"okay"},{key:"4",label:"good"},{key:"5",label:"excellent"}], randomize:false, showDist:true, minN:5 },
+    { id:"q2_vibe", type:"swipe", text:"which best describes what you are enjoying most today?", no:{key:"no",label:"the festival vibe"}, yes:{key:"yes",label:"the live music"}, randomize:false, showDist:true, minN:5 },
+    { id:"q3_artist", type:"image", text:"which artist are you most excited to see today?", options:[ {key:"a",label:"The Besnard Lakes",img:null}, {key:"b",label:"Andino Suns",img:null}, {key:"c",label:"Indigo Joseph",img:null}, {key:"d",label:"The North Sound",img:null}, {key:"k",label:"i\u2019m not sure yet",img:null} ], randomize:false, showDist:true, minN:5 },
+    { id:"q4_future", type:"swipe", text:"for future festivals, which would you rather see more of?", no:{key:"no",label:"local Saskatchewan artists"}, yes:{key:"yes",label:"well-known touring acts"}, randomize:false, showDist:true, minN:5 },
+    { id:"q5_return", type:"likert", likertMode:"slider", sliderRange:"1-7", sliderLabels:{left:"not at all likely",center:"neutral",right:"extremely likely"}, text:"how likely would you be to attend this festival again next year?", scale:[{key:"1",label:""},{key:"2",label:""},{key:"3",label:""},{key:"4",label:""},{key:"5",label:""},{key:"6",label:""},{key:"7",label:""}], randomize:false, showDist:true, minN:5 },
+    { id:"q6_genres", type:"multi", multiSelect:true, text:"which types of music would you most like to see at future festivals?", options:[ {key:"a",label:"indie rock / alternative"}, {key:"b",label:"folk / singer-songwriter"}, {key:"c",label:"hip-hop / rap"}, {key:"d",label:"electronic / DJ sets"}, {key:"e",label:"country / roots"}, {key:"f",label:"punk / hardcore"}, {key:"g",label:"pop"}, {key:"h",label:"metal / heavy music"}, {key:"i",label:"world / global music"}, {key:"j",label:"Indigenous artists / music"}, {key:"k",label:"jazz / soul / R&B"}, {key:"l",label:"experimental / arts-focused"}, {key:"m",label:"other"}, {key:"n",label:"i\u2019m open to anything"} ], randomize:false, showDist:true, minN:5 }
+  ]; },
+  defaultSurvey(){ return { id:"sv_exchange", name:"Exchange Folk Festival", version:1, branding:this.defaultBrand(), pages:this.defaultPages(), text:this.defaultText(), questions:this.defaultQuestions() }; },
+
   init(){
-    this.state = { screen:"attract", phase:"asking", qIndex:0, lastAnswer:null, counts:this.SEED,
-      questions:this.DEFAULT_Q, configVersion:1,
+    this.state = {
+      surveys:[this.defaultSurvey()], activeId:"sv_exchange",
+      screen:"attract", phase:"asking", qIndex:0, lastAnswer:null, counts:this.SEED,
+      pendSel:null, optOrder:null,
       metrics:{interactions:0, videoConsents:0, recruitViews:0, sessions:0, lastExport:null},
-      passEntry:"", passErr:false, editIdx:-1, draft:null, holdPct:0,
+      passEntry:"", passErr:false, editIdx:-1, draft:null,
+      settings:{smsKey:"",dataKey:"",dataUrl:""}, settingsSaved:false,
+      recruitPhone:"", recruitSent:false, recruitSending:false,
       idleWarn:false, warnLeft:8, recording:false, recSec:0, camDenied:false,
-      countDisp:0, revealGrow:0, revealPrompt:false, reviewLen:"short",
-      recruitPhone:"", recruitSent:false, recruitSending:false };
-    // load persisted (try/catch — as original)
+      countDisp:0, revealGrow:1, reviewLen:"short"
+    };
     try{ const raw=localStorage.getItem(this.STORE); if(raw){ this.state.counts=JSON.parse(raw); } else { localStorage.setItem(this.STORE, JSON.stringify(this.SEED)); } }catch(e){}
-    try{ const cfg=JSON.parse(localStorage.getItem(this.CFG)||"null"); if(cfg&&cfg.questions&&cfg.questions.length){ this.state.questions=cfg.questions; this.state.configVersion=cfg.version||1; } }catch(e){}
+    try{ const sv=JSON.parse(localStorage.getItem(this.SURV)||"null"); if(sv&&sv.length){ const act=localStorage.getItem(this.ACT); this.state.surveys=sv; this.state.activeId=(act&&sv.find(s=>s.id===act))?act:sv[0].id; } }catch(e){}
     try{ const met=JSON.parse(localStorage.getItem(this.MET)||"null"); if(met){ this.state.metrics=Object.assign({interactions:0,videoConsents:0,recruitViews:0,sessions:0,lastExport:null},met); } }catch(e){}
+    try{ const st=JSON.parse(localStorage.getItem(this.SET)||"null"); if(st){ this.state.settings=Object.assign({smsKey:"",dataKey:"",dataUrl:""},st); } }catch(e){}
     window.addEventListener("pointerdown", ()=>this.armIdle(), true);
     this.fit(); window.addEventListener("resize", ()=>this.fit());
     window.addEventListener("orientationchange", ()=>setTimeout(()=>this.fit(), 250));
     this.render();
   },
 
-  setState(patch){
-    if(typeof patch==="function") patch=patch(this.state);
-    Object.assign(this.state, patch);
-    this.render();
-  },
+  setState(patch){ if(typeof patch==="function") patch=patch(this.state); Object.assign(this.state, patch); this.render(); },
+  cur(){ return this.state.surveys.find(s=>s.id===this.state.activeId) || this.state.surveys[0]; },
 
-  fit(){
-    const s=Math.min(window.innerWidth/1180, window.innerHeight/820);
-    document.getElementById("screen").style.transform="scale("+s+")";
-  },
+  fit(){ const s=Math.min(window.innerWidth/1180, window.innerHeight/820); document.getElementById("screen").style.transform="scale("+s+")"; },
   bgFor(){
     if(this.state.idleWarn) return "#0d1518";
+    const b=this.cur().branding||{};
     switch(this.state.screen){
-      case "attract": case "capture": case "review": case "lock": return "var(--insight-black)";
-      case "recruit": return "var(--measured-purple)";
+      case "attract": case "recruit": return b.primary||"var(--insight-black)";
+      case "capture": case "review": case "lock": return "var(--insight-black)";
       case "thanks": return "var(--anchor-green)";
-      case "admin": case "editq": return "var(--bg-subtle)";
+      case "admin": case "editq": case "pages": case "branding": case "settings": return "var(--bg-subtle)";
       default: return "var(--system-white)";
     }
   },
 
+  /* ---------- surveys ---------- */
+  persistSurveys(list){ try{ localStorage.setItem(this.SURV, JSON.stringify(list)); }catch(e){} },
+  updateActive(patch, bump){
+    this.setState(s=>{
+      const list=s.surveys.map(sv=>{ if(sv.id!==s.activeId) return sv; const next=Object.assign({}, sv, patch); if(bump) next.version=(sv.version||1)+1; return next; });
+      this.persistSurveys(list); return {surveys:list};
+    });
+  },
+  pickSurvey(id){ this.setState({activeId:id, editIdx:-1, draft:null}); try{ localStorage.setItem(this.ACT, id); }catch(e){} },
+  addSurvey(){
+    const id="sv_"+Date.now().toString(36); const src=this.cur();
+    const blank={ id, name:"New Survey", version:1, branding:this.defaultBrand(),
+      pages:{ consent:true, video:false, recruit:false, thanks:true },
+      text:JSON.parse(JSON.stringify(src.text)), questions:[ this.newBlankQuestion() ] };
+    this.setState(s=>{ const list=s.surveys.concat([blank]); this.persistSurveys(list); try{localStorage.setItem(this.ACT,id);}catch(e){} return {surveys:list, activeId:id, editIdx:-1, draft:null}; });
+  },
+  dupSurvey(){
+    const id="sv_"+Date.now().toString(36); const copy=JSON.parse(JSON.stringify(this.cur())); copy.id=id; copy.name=copy.name+" (copy)"; copy.version=1;
+    this.setState(s=>{ const list=s.surveys.concat([copy]); this.persistSurveys(list); try{localStorage.setItem(this.ACT,id);}catch(e){} return {surveys:list, activeId:id}; });
+  },
+  delSurvey(){
+    if(this.state.surveys.length<=1) return;
+    this.setState(s=>{ const list=s.surveys.filter(sv=>sv.id!==s.activeId); this.persistSurveys(list); const nid=list[0].id; try{localStorage.setItem(this.ACT,nid);}catch(e){} return {surveys:list, activeId:nid, editIdx:-1, draft:null}; });
+  },
+  renameSurvey(name){ this.updateActive({name:name||"Untitled"}); },
+
+  /* ---------- content / pages / brand ---------- */
+  setText(field, val){ const t=Object.assign({}, this.cur().text, {[field]:val}); this.updateActive({text:t}); },
+  setBullet(idx, field, val){ const t=JSON.parse(JSON.stringify(this.cur().text)); if(!t.bullets[idx])t.bullets[idx]={bold:"",text:""}; t.bullets[idx][field]=val; this.updateActive({text:t}); },
+  setPage(field, val){ const p=Object.assign({}, this.cur().pages, {[field]:val}); this.updateActive({pages:p}); },
+  setBrand(field, val){ const b=Object.assign({}, this.cur().branding, {[field]:val}); this.updateActive({branding:b}); },
+  resetBranding(){ this.updateActive({branding:this.defaultBrand()}); },
+  readImg(file, cb){ if(!file) return; const r=new FileReader(); r.onload=()=>cb(r.result); r.readAsDataURL(file); },
+  onLogoFile(input){ const f=input.files&&input.files[0]; this.readImg(f,(d)=>this.setBrand("logo", d)); },
+  clearLogo(){ this.setBrand("logo", null); },
+
   /* ---------- idle ---------- */
-  armIdle(){ clearTimeout(this.idleT); const s=this.state.screen;
-    if(s==="attract"||s==="lock"||s==="admin"||s==="editq"||this.state.recording) return;
-    this.idleT=setTimeout(()=>this.startWarn(), 30000); },
-  startWarn(){ const s=this.state.screen;
-    if(s==="attract"||s==="lock"||s==="admin"||s==="editq"||this.state.recording) return;
-    clearInterval(this.warnI); this.setState({idleWarn:true, warnLeft:8});
+  _idleBlocked(){ const s=this.state.screen; return s==="attract"||s==="lock"||s==="admin"||s==="editq"||s==="pages"||s==="branding"||s==="settings"||this.state.recording; },
+  armIdle(){ clearTimeout(this.idleT); if(this._idleBlocked()) return; this.idleT=setTimeout(()=>this.startWarn(), 30000); },
+  startWarn(){ if(this._idleBlocked()) return; clearInterval(this.warnI); this.setState({idleWarn:true, warnLeft:8});
     this.warnI=setInterval(()=>{ this.setState(st=>{ if(st.warnLeft<=1){ clearInterval(this.warnI); this.restart(); return {warnLeft:0}; } return {warnLeft:st.warnLeft-1}; }); },1000); },
   stayActive(){ clearInterval(this.warnI); this.setState({idleWarn:false}); this.armIdle(); },
 
+  /* ---------- option order / slider / conditional ---------- */
+  orderFor(q){ if(!q) return [];
+    let keys = q.type==="swipe" ? [q.yes.key, q.no.key] : q.type==="likert" ? (q.scale||[]).map(s=>s.key) : (q.options||[]).map(o=>o.key);
+    keys=keys.slice();
+    if(q.randomize && q.type!=="swipe"){ for(let i=keys.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=keys[i]; keys[i]=keys[j]; keys[j]=t; } }
+    return keys; },
+  sliderSpec(q){ const m={ "1-5":[1,5,1], "1-7":[1,7,1], "1-10":[1,10,1], "0-10":[0,10,1], "0-100":[0,100,1] }; const r=m[q.sliderRange||"1-5"]||m["1-5"]; return {min:r[0], max:r[1], step:r[2], centre:Math.round((r[0]+r[1])/2)}; },
+  setupQuestion(qi){ const q=this.cur().questions[qi]; const order=this.orderFor(q); let pend=null;
+    if(q && q.type==="likert" && q.likertMode==="slider"){ pend=String(this.sliderSpec(q).centre); }
+    else if(q && q.type==="multi" && q.multiSelect){ pend=[]; }
+    return {order, pend}; },
+  condMet(q){ if(!q||!q.cond||!q.cond.qId) return true; return this.sessionAnswers && this.sessionAnswers[q.cond.qId]===q.cond.value; },
+  nextVisibleIndex(from){ const qs=this.cur().questions; for(let i=from;i<qs.length;i++){ if(this.condMet(qs[i])) return i; } return qs.length; },
+  condCandidates(){ const qs=this.cur().questions; const selfId=this.state.draft?this.state.draft.id:null; const idx=this.state.editIdx;
+    return qs.filter((x,i)=>{ if(x.id===selfId) return false; if(idx>=0 && i>=idx) return false; if(x.type==="likert" && (x.likertMode||"buttons")==="slider") return false; return true; }); },
+  condValuesFor(qid){ const cq=this.cur().questions.find(x=>x.id===qid); if(!cq) return [];
+    if(cq.type==="swipe") return [{key:cq.yes.key,label:cq.yes.label},{key:cq.no.key,label:cq.no.label}];
+    if(cq.type==="likert") return (cq.scale||[]).map(s=>({key:s.key,label:s.label||s.key}));
+    return (cq.options||[]).map(o=>({key:o.key,label:o.label})); },
+  toggleCond(){ const d=this.state.draft; if(d.cond){ this.setDraft({cond:null}); return; } const cands=this.condCandidates();
+    if(!cands.length){ this.setDraft({cond:{qId:"", value:""}}); return; } const first=cands[0]; const vs=this.condValuesFor(first.id); this.setDraft({cond:{qId:first.id, value:vs[0]?vs[0].key:""}}); },
+  setCondQid(qid){ const vs=this.condValuesFor(qid); this.setDraft({cond:{qId:qid, value:vs[0]?vs[0].key:""}}); },
+  setCondVal(v){ const d=this.state.draft; this.setDraft({cond:Object.assign({}, d.cond, {value:v})}); },
+  setSliderFromX(x){ const el=document.getElementById("sliderTrack"); if(!el)return; const q=this.cur().questions[this.state.qIndex]; if(!q||q.type!=="likert")return;
+    const sp=this.sliderSpec(q); const r=el.getBoundingClientRect(); let t=(x-r.left)/r.width; t=Math.max(0,Math.min(1,t));
+    const raw=sp.min + t*(sp.max-sp.min); let val=Math.round(raw/sp.step)*sp.step; val=Math.max(sp.min,Math.min(sp.max,val));
+    this._pendSlider=val; const pct=((val-sp.min)/(sp.max-sp.min))*100;
+    const big=document.getElementById("sliderBig"); if(big) big.firstChild&&(big.firstChild.textContent=String(val));
+    const fill=document.getElementById("sliderFill"); if(fill) fill.style.width=pct+"%";
+    const handle=document.getElementById("sliderHandle"); if(handle) handle.style.left=pct+"%"; },
+  onSliderDown(e){ if(this.state.phase!=="asking")return; this._sliderDrag=true; try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(_){}; this.setSliderFromX(e.clientX); },
+  onSliderMove(e){ if(!this._sliderDrag)return; this.setSliderFromX(e.clientX); },
+  onSliderUp(){ if(!this._sliderDrag) return; this._sliderDrag=false; if(this._pendSlider!=null) this.setState({pendSel:String(this._pendSlider)}); },
+
   /* ---------- nav ---------- */
   startSession(){ this.setState({screen:"consent"}); this.armIdle(); },
-  startSession2(){ this.sessionId="s"+Date.now().toString(36); this.seqIndex=0; this.qStart=Date.now();
+  enterQuestions(){ this.sessionId="s"+Date.now().toString(36); this.seqIndex=0; this.qStart=Date.now(); this.sessionAnswers={};
     const m=Object.assign({}, this.state.metrics, {sessions:(this.state.metrics.sessions||0)+1}); this.saveMetrics(m);
-    this.setState({screen:"question", qIndex:0, phase:"asking", metrics:m}); this.armIdle(); },
+    const start=this.nextVisibleIndex(0); const su=this.setupQuestion(start);
+    this.setState({screen:"question", qIndex:start, phase:"asking", pendSel:su.pend, optOrder:su.order, metrics:m}); this.armIdle(); },
+  startSession2(){ this.enterQuestions(); },
   restart(){ clearInterval(this.warnI); clearTimeout(this.thanksT); clearTimeout(this.idleT); clearInterval(this.recTimer);
-    clearInterval(this.holdI); clearTimeout(this.promptT); clearTimeout(this.sendT); cancelAnimationFrame(this.countRAF);
-    this.drag=null; this._countDone=false; this.stopCamera();
-    this.setState({screen:"attract", phase:"asking", qIndex:0, lastAnswer:null, idleWarn:false, recording:false, recSec:0, camDenied:false, holdPct:0, revealPrompt:false, recruitPhone:"", recruitSent:false, recruitSending:false}); },
-  nextFromReveal(){ clearTimeout(this.promptT); cancelAnimationFrame(this.countRAF); this._countDone=false;
-    const ni=this.state.qIndex+1;
-    if(ni>=this.state.questions.length){ this.setState({screen:"video", revealPrompt:false}); }
-    else { this.qStart=Date.now(); this.setState({screen:"question", qIndex:ni, phase:"asking", revealPrompt:false}); }
+    clearTimeout(this.promptT); clearTimeout(this.sendT); clearTimeout(this.sendT2); cancelAnimationFrame(this.countRAF);
+    this.drag=null; this._countDone=false; this.sessionAnswers={}; this.stopCamera();
+    this.setState({screen:"attract", phase:"asking", qIndex:0, lastAnswer:null, pendSel:null, idleWarn:false, recording:false, recSec:0, camDenied:false, recruitPhone:"", recruitSent:false, recruitSending:false}); },
+  afterQuestions(){ const p=this.cur().pages; if(p.video){ this.setState({screen:"video"}); this.armIdle(); } else { this.afterVideo(); } },
+  afterVideo(){ const p=this.cur().pages; if(p.recruit){ this.toRecruit(); } else { this.finishFlow(); } },
+  finishFlow(){ const p=this.cur().pages; if(p.thanks){ this.toThanks(); } else { this.restart(); } },
+  toRecruit(){ const mr=Object.assign({}, this.state.metrics, {recruitViews:(this.state.metrics.recruitViews||0)+1}); this.saveMetrics(mr);
+    this.setState({screen:"recruit", metrics:mr, recruitPhone:"", recruitSent:false, recruitSending:false}); this.armIdle(); },
+  nextFromReveal(){ cancelAnimationFrame(this.countRAF); this._countDone=false;
+    const ni=this.nextVisibleIndex(this.state.qIndex+1);
+    if(ni>=this.cur().questions.length){ this.afterQuestions(); }
+    else { this.qStart=Date.now(); const su=this.setupQuestion(ni); this.setState({screen:"question", qIndex:ni, phase:"asking", pendSel:su.pend, optOrder:su.order}); }
     this.armIdle(); },
   videoYes(){ const m=Object.assign({}, this.state.metrics, {videoConsents:(this.state.metrics.videoConsents||0)+1}); this.saveMetrics(m);
-    this.setState({screen:"capture", recording:false, recSec:0, camDenied:false, holdPct:0, metrics:m}); },
-  videoNo(){ this.setState({screen:"recruit", recruitPhone:"", recruitSent:false, recruitSending:false}); this.armIdle(); },
-  cancelCapture(){ this.stopCamera(); this.setState({screen:"recruit", recording:false, recSec:0}); this.armIdle(); },
+    this.setState({screen:"capture", recording:false, recSec:0, camDenied:false, metrics:m}); },
+  videoNo(){ this.afterVideo(); },
+  cancelCapture(){ this.stopCamera(); this.setState({recording:false, recSec:0}); this.afterVideo(); },
   recordAgain(){ this.setState({screen:"capture", recording:false, recSec:0, camDenied:false}); },
-  reviewDone(){ this.setState({screen:"recruit", recruitPhone:"", recruitSent:false, recruitSending:false}); this.armIdle(); },
-  recruitDone(){ this.toThanks(); },
+  reviewDone(){ this.afterVideo(); },
+  recruitDone(){ this.finishFlow(); },
   toThanks(){ clearTimeout(this.idleT); this.setState({screen:"thanks"}); clearTimeout(this.thanksT); this.thanksT=setTimeout(()=>this.restart(), 14000); },
 
   /* ---------- answers ---------- */
   commitAnswer(qid, key){
     const counts=JSON.parse(JSON.stringify(this.state.counts));
-    if(!counts[qid]) counts[qid]={};
-    counts[qid][key]=(counts[qid][key]||0)+1;
+    if(!counts[qid]) counts[qid]={}; counts[qid][key]=(counts[qid][key]||0)+1;
     try{ localStorage.setItem(this.STORE, JSON.stringify(counts)); }catch(e){}
-    try{ const q=this.state.questions.find(x=>x.id===qid)||{};
-      const order = q.type==="likert" ? (q.scale||[]).map(s=>s.key) : [q.yes&&q.yes.key, q.no&&q.no.key];
+    try{ const q=this.cur().questions.find(x=>x.id===qid)||{}; const order = this.state.optOrder || this.orderFor(q);
       const resp=JSON.parse(localStorage.getItem(this.RESP)||"[]");
-      resp.push({ session_id:this.sessionId||"s0", device_id:this.deviceId, config_version:this.state.configVersion,
+      resp.push({ session_id:this.sessionId||"s0", device_id:this.deviceId, survey_id:this.cur().id, config_version:this.cur().version||1,
         timestamp:new Date().toISOString(), question_id:qid, response_type:q.type, response_value:key,
         option_order_shown:order, time_to_answer_ms:(this.qStart?(Date.now()-this.qStart):null), sequence_index:(this.seqIndex||0) });
       localStorage.setItem(this.RESP, JSON.stringify(resp));
     }catch(e){}
     const mi=Object.assign({}, this.state.metrics, {interactions:(this.state.metrics.interactions||0)+1}); this.saveMetrics(mi);
-    this.seqIndex=(this.seqIndex||0)+1; this.qStart=Date.now();
-    this.drag=null; this._countDone=false;
-    clearTimeout(this.promptT); this.promptT=setTimeout(()=>this.setState({revealPrompt:true}), 3500);
-    this.setState({counts, lastAnswer:{qid,key}, phase:"revealed", countDisp:0, revealGrow:0, revealPrompt:false, metrics:mi});
+    this.seqIndex=(this.seqIndex||0)+1; this.sessionAnswers[qid]=key; this.drag=null; this._countDone=false;
+    this.setState({counts, lastAnswer:{qid,key}, phase:"revealed", pendSel:null, countDisp:0, revealGrow:1, metrics:mi});
+    this.armIdle();
+  },
+  selectChoice(key){ if(this.state.phase!=="asking")return; const q=this.cur().questions[this.state.qIndex];
+    if(q&&q.type==="multi"&&q.multiSelect){ this.setState(s=>{ const cur=Array.isArray(s.pendSel)?s.pendSel.slice():[]; const i=cur.indexOf(key); if(i>=0)cur.splice(i,1); else cur.push(key); return {pendSel:cur}; }); }
+    else { this.setState({pendSel:key}); } },
+  clearChoice(){ const q=this.cur().questions[this.state.qIndex]; this.setState({pendSel:(q&&q.type==="multi"&&q.multiSelect)?[]:null}); },
+  confirmChoice(){ const q=this.cur().questions[this.state.qIndex];
+    if(q&&q.type==="multi"&&q.multiSelect){ const arr=Array.isArray(this.state.pendSel)?this.state.pendSel:[]; if(!arr.length)return; this.commitMulti(q.id, arr); return; }
+    const key=this.state.pendSel; if(key==null)return; this.commitAnswer(q.id, key); },
+  commitMulti(qid, keys){
+    const counts=JSON.parse(JSON.stringify(this.state.counts));
+    if(!counts[qid]) counts[qid]={}; counts[qid].__resp=(counts[qid].__resp||0)+1; keys.forEach(k=>{ counts[qid][k]=(counts[qid][k]||0)+1; });
+    try{ localStorage.setItem(this.STORE, JSON.stringify(counts)); }catch(e){}
+    try{ const q=this.cur().questions.find(x=>x.id===qid)||{}; const resp=JSON.parse(localStorage.getItem(this.RESP)||"[]");
+      resp.push({ session_id:this.sessionId||"s0", device_id:this.deviceId, survey_id:this.cur().id, config_version:this.cur().version||1,
+        timestamp:new Date().toISOString(), question_id:qid, response_type:"multi_select", response_value:keys.join("|"),
+        option_order_shown:(this.state.optOrder||this.orderFor(q)), time_to_answer_ms:(this.qStart?(Date.now()-this.qStart):null), sequence_index:(this.seqIndex||0) });
+      localStorage.setItem(this.RESP, JSON.stringify(resp));
+    }catch(e){}
+    const mi=Object.assign({}, this.state.metrics, {interactions:(this.state.metrics.interactions||0)+1}); this.saveMetrics(mi);
+    this.seqIndex=(this.seqIndex||0)+1; this.sessionAnswers[qid]=keys; this._countDone=false;
+    this.setState({counts, lastAnswer:{qid,key:keys}, phase:"revealed", pendSel:null, countDisp:keys.length, revealGrow:1, metrics:mi});
     this.armIdle();
   },
 
-  /* ---------- swipe gestures (DOM-direct, as original via refs) ---------- */
-  onSwipeStart(e){ const q=this.state.questions[this.state.qIndex]; if(!q||q.type!=="swipe"||this.state.phase!=="asking") return;
+  /* ---------- swipe ---------- */
+  onSwipeStart(e){ const q=this.cur().questions[this.state.qIndex]; if(!q||q.type!=="swipe"||this.state.phase!=="asking") return;
     this.drag={x:e.clientX, dx:0}; try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(_){}
-    const card=document.getElementById("swipeCard"); if(card){ card.style.transition="none"; card.style.cursor="grabbing"; } },
+    const card=document.getElementById("swipeCard"); if(card){ card.style.animation="none"; card.style.transition="none"; card.style.cursor="grabbing"; } },
   onSwipeMove(e){ if(!this.drag) return; const dx=e.clientX-this.drag.x; this.drag.dx=dx;
     const card=document.getElementById("swipeCard"); if(card) card.style.transform="translateX("+dx+"px) rotate("+(dx*0.05)+"deg)";
     const r=Math.max(0,Math.min(1,dx/160)), l=Math.max(0,Math.min(1,-dx/160));
     const rh=document.getElementById("rightHint"), lh=document.getElementById("leftHint"), tint=document.getElementById("tint");
-    if(rh) rh.style.opacity=String(0.55+r*0.45); if(lh) lh.style.opacity=String(0.55+l*0.45);
+    if(rh) rh.style.opacity=String(0.9+r*0.1); if(lh) lh.style.opacity=String(0.9+l*0.1);
     if(tint){ const mag=Math.max(r,l); tint.style.background = dx>=0?"var(--anchor-green)":"var(--index-red)"; tint.style.opacity=String(Math.min(0.5, mag*0.5)); } },
-  onSwipeEnd(){ if(!this.drag) return; const dx=this.drag.dx; const q=this.state.questions[this.state.qIndex];
-    const card=document.getElementById("swipeCard");
+  onSwipeEnd(){ if(!this.drag) return; const dx=this.drag.dx; const q=this.cur().questions[this.state.qIndex]; const card=document.getElementById("swipeCard");
     if(dx>130 || dx<-130){ const dir=dx>0?1:-1;
       if(card){ card.style.transition="transform .28s cubic-bezier(0.7,0,0.84,0)"; card.style.transform="translateX("+(dir*900)+"px) rotate("+(dir*22)+"deg)"; }
       const key=dir>0?q.yes.key:q.no.key; this.drag=null; setTimeout(()=>this.commitAnswer(q.id, key), 190);
-    } else { if(card){ card.style.transition="transform .3s cubic-bezier(0.16,1,0.3,1)"; card.style.transform=""; card.style.cursor="grab"; }
+    } else { if(card){ card.style.transition="transform .3s cubic-bezier(0.16,1,0.3,1)"; card.style.transform=""; card.style.cursor="grab"; card.style.animation="cardNudge 3.6s ease-in-out 1s infinite"; }
       const rh=document.getElementById("rightHint"), lh=document.getElementById("leftHint"), tint=document.getElementById("tint");
-      if(rh) rh.style.opacity=".55"; if(lh) lh.style.opacity=".55"; if(tint) tint.style.opacity="0"; this.drag=null; } },
-  swipeYes(){ if(this.state.phase!=="asking")return; const q=this.state.questions[this.state.qIndex]; this.commitAnswer(q.id, q.yes.key); },
-  swipeNo(){ if(this.state.phase!=="asking")return; const q=this.state.questions[this.state.qIndex]; this.commitAnswer(q.id, q.no.key); },
+      if(rh) rh.style.opacity=".9"; if(lh) lh.style.opacity=".9"; if(tint) tint.style.opacity="0"; this.drag=null; } },
+  swipeYes(){ if(this.state.phase!=="asking")return; const q=this.cur().questions[this.state.qIndex]; this.commitAnswer(q.id, q.yes.key); },
+  swipeNo(){ if(this.state.phase!=="asking")return; const q=this.cur().questions[this.state.qIndex]; this.commitAnswer(q.id, q.no.key); },
 
   /* ---------- reveal ---------- */
-  getReveal(){ const a=this.state.lastAnswer; if(!a) return null;
-    const q=this.state.questions.find(x=>x.id===a.qid); const c=this.state.counts[q.id]||{};
-    const keys = q.type==="swipe" ? [q.yes.key, q.no.key] : q.scale.map(s=>s.key);
+  getRevealFrom(counts, a){
+    if(!a) return null; const q=this.cur().questions.find(x=>x.id===a.qid); if(!q) return null; const c=counts[q.id]||{};
+    if(q.type==="multi" && q.multiSelect){
+      const keys=(q.options||[]).map(o=>o.key); const resp=c.__resp||0; const sel=Array.isArray(a.key)?a.key:[];
+      const minN=q.minN!=null?q.minN:5; const smallN=resp<minN; const labelFor=(k)=>{ const o=(q.options||[]).find(o=>o.key===k)||{}; return o.label||k; };
+      const bars=keys.map(k=>{ const cnt=c[k]||0; const pct=resp?Math.round(cnt/resp*100):0; const isChosen=sel.indexOf(k)>=0; return { label:labelFor(k), cnt, pct, isChosen, pctText: smallN?String(cnt):pct+"%" }; });
+      return { q, choiceLabel:"your picks", bars, total:resp, chosen:{cnt:sel.length,pct:0}, smallN, bigTarget: sel.length, isMulti:true };
+    }
+    if(q.type==="likert" && q.likertMode==="slider"){
+      const sp=this.sliderSpec(q); const span=sp.max-sp.min; const entries=Object.keys(c).map(k=>({v:Number(k), n:c[k]||0})); const total=entries.reduce((s,e)=>s+e.n,0); const userVal=Number(a.key);
+      let buckets=[];
+      if(span<=10){ for(let v=sp.min;v<=sp.max;v+=sp.step){ buckets.push({label:String(v), test:(x)=>x===v}); } }
+      else { const seg=span/5; for(let b=0;b<5;b++){ const lo=Math.round(sp.min+seg*b), hi=Math.round(sp.min+seg*(b+1)), last=(b===4); buckets.push({label:lo+"\u2013"+hi, test:(x)=> x>=lo && (last? x<=hi : x<hi)}); } }
+      const minN=q.minN!=null?q.minN:5; const smallN=total<minN;
+      const bars=buckets.map(bk=>{ const cnt=entries.reduce((s,e)=>s+(bk.test(e.v)?e.n:0),0); const pct=total?Math.round(cnt/total*100):0; const isChosen=bk.test(userVal); return { label:bk.label, cnt, pct, isChosen, pctText: smallN?String(cnt):pct+"%" }; });
+      const chosen=bars.find(b=>b.isChosen)||{cnt:0,pct:0};
+      return { q, choiceLabel:String(userVal)+" / "+sp.max, bars, total, chosen, smallN, bigTarget: smallN?chosen.cnt:chosen.pct, isSlider:true };
+    }
+    const keys = q.type==="swipe" ? [q.yes.key, q.no.key] : q.type==="likert" ? q.scale.map(s=>s.key) : (q.options||[]).map(o=>o.key);
     const total = keys.reduce((s,k)=>s+(c[k]||0),0);
-    const labelFor=(k)=> q.type==="swipe" ? (k===q.yes.key?q.yes.label:q.no.label) : (q.scale.find(s=>s.key===k)||{}).label;
-    const smallN = total<5;
-    const bars = keys.map(k=>{ const cnt=c[k]||0; const pct= total? Math.round(cnt/total*100):0; const isChosen=k===a.key;
-      return { label:labelFor(k), cnt, pct, isChosen, pctText: smallN? String(cnt) : pct+"%" }; });
+    const labelFor=(k)=>{ if(q.type==="swipe") return k===q.yes.key?q.yes.label:q.no.label; if(q.type==="likert"){ const sp=q.scale.find(s=>s.key===k)||{}; return sp.label || k; } const o=(q.options||[]).find(o=>o.key===k)||{}; return o.label || k; };
+    const minN = q.minN!=null?q.minN:5; const smallN = total<minN;
+    const bars = keys.map(k=>{ const cnt=c[k]||0; const pct= total? Math.round(cnt/total*100):0; const isChosen=k===a.key; return { label:labelFor(k), cnt, pct, isChosen, pctText: smallN? String(cnt) : pct+"%" }; });
     const chosen=bars.find(b=>b.isChosen)||{cnt:0,pct:0};
     return { q, choiceLabel:labelFor(a.key), bars, total, chosen, smallN, bigTarget: smallN? chosen.cnt : chosen.pct };
   },
+  getReveal(){ return this.getRevealFrom(this.state.counts, this.state.lastAnswer); },
   animateReveal(){ const r=this.getReveal(); if(!r) return; cancelAnimationFrame(this.countRAF);
     const dur=850, t0=Date.now(), target=r.bigTarget;
-    const tick=()=>{ const p=Math.min(1,(Date.now()-t0)/dur); const e=1-Math.pow(1-p,3);
-      const big=document.getElementById("rvbig"); if(big) big.textContent=Math.round(e*target);
-      r.bars.forEach((b,i)=>{ const f=document.getElementById("rvfill"+i); if(f){ f.style.width=(b.pct*e)+"%"; f.style.minWidth=(b.pct>0&&e>0.04)?"8px":"0"; } });
-      if(p<1){ this.countRAF=requestAnimationFrame(tick); } else { this.state.countDisp=target; this.state.revealGrow=1; } };
-    this.countRAF=requestAnimationFrame(tick);
-  },
+    const tick=()=>{ const p=Math.min(1,(Date.now()-t0)/dur); const e=1-Math.pow(1-p,3); const big=document.getElementById("rvbig"); if(big) big.textContent=String(Math.round(e*target));
+      if(p<1){ this.countRAF=requestAnimationFrame(tick); } else { this.state.countDisp=target; } };
+    this.countRAF=requestAnimationFrame(tick); },
 
   /* ---------- camera ---------- */
   async startCamera(){ this.setState({camDenied:false, recording:false, recSec:0});
@@ -231,42 +379,27 @@ const App = {
       const v=document.getElementById("camVideo"); if(v){ v.srcObject=stream; v.play().catch(()=>{}); }
     }catch(e){ this.setState({camDenied:true}); } },
   stopCamera(){ if(this.stream){ try{ this.stream.getTracks().forEach(t=>t.stop()); }catch(e){} this.stream=null; }
-    clearInterval(this.recTimer); clearInterval(this.holdI);
-    if(this.recorder && this.recorder.state && this.recorder.state!=="inactive"){ try{this.recorder.stop();}catch(e){} } },
+    clearInterval(this.recTimer); if(this.recorder && this.recorder.state && this.recorder.state!=="inactive"){ try{this.recorder.stop();}catch(e){} } },
+  toggleRecord(){ if(this.state.recording){ this.finishRecord(); } else { this.startRecord(); } },
   startRecord(){ if(this.state.recording) return;
     if(this.stream && window.MediaRecorder){ try{ this.recorder=new MediaRecorder(this.stream); this.chunks=[]; this.recorder.ondataavailable=(e)=>{ if(e.data&&e.data.size) this.chunks.push(e.data); }; this.recorder.start(); }catch(e){} }
-    this.setState({recording:true, recSec:0, holdPct:0}); // single render -> recording UI
+    this.setState({recording:true, recSec:0});
     clearInterval(this.recTimer);
-    this.recTimer=setInterval(()=>{ this.state.recSec++; const c=document.getElementById("recClock"); if(c){ const m=Math.floor(this.state.recSec/60), s=this.state.recSec%60; c.textContent=m+":"+(s<10?"0":"")+s; } if(this.state.recSec>=120){ clearInterval(this.recTimer); this.finishRecord(); } },1000);
+    this.recTimer=setInterval(()=>{ this.state.recSec++; const c=document.getElementById("recClock"); if(c){ const m=Math.floor(this.state.recSec/60), s=this.state.recSec%60; c.textContent="rec "+m+":"+(s<10?"0":"")+s+" / 1:00"; } if(this.state.recSec>=59){ clearInterval(this.recTimer); this.finishRecord(); } },1000);
     this.armIdle(); },
-  beginStopHold(){ if(!this.state.recording) return; clearInterval(this.holdI); const dur=1000, t0=Date.now(), C=2*Math.PI*48;
-    this.holdI=setInterval(()=>{ const p=Math.min(100, Math.round((Date.now()-t0)/dur*100)); const fg=document.getElementById("recRingFg"); if(fg) fg.style.strokeDashoffset=String(C*(1-p/100)); if(p>=100){ clearInterval(this.holdI); this.finishRecord(); } }, 16); },
-  endStopHold(){ clearInterval(this.holdI); const fg=document.getElementById("recRingFg"); if(fg) fg.style.strokeDashoffset=String(2*Math.PI*48); },
-  finishRecord(){ clearInterval(this.recTimer); clearInterval(this.holdI);
-    if(this.recorder && this.recorder.state && this.recorder.state!=="inactive"){ try{this.recorder.stop();}catch(e){} }
-    const len=this.state.recSec; this.stopCamera(); this.setState({recording:false, holdPct:0, screen:"review", reviewLen:len+"-second"}); },
+  finishRecord(){ clearInterval(this.recTimer); if(this.recorder && this.recorder.state && this.recorder.state!=="inactive"){ try{this.recorder.stop();}catch(e){} }
+    const len=this.state.recSec; this.stopCamera(); this.setState({recording:false, screen:"review", reviewLen:len+"-second"}); },
 
-  /* ---------- QR (deterministic placeholder) ---------- */
-  drawQR(canvas){ const ctx=canvas.getContext("2d"); const n=25, s=canvas.width/n;
-    ctx.fillStyle="#fffcfa"; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.fillStyle="#1a2b30";
-    let seed=987654321; const rnd=()=>{ seed=(seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff; };
-    for(let r=0;r<n;r++){ for(let c=0;c<n;c++){ const inF=(r<8&&c<8)||(r<8&&c>=n-8)||(r>=n-8&&c<8); if(inF) continue; if(rnd()>0.55) ctx.fillRect(c*s, r*s, s, s); }}
-    const finder=(ox,oy)=>{ ctx.fillStyle="#1a2b30"; ctx.fillRect(ox*s,oy*s,7*s,7*s); ctx.fillStyle="#fffcfa"; ctx.fillRect((ox+1)*s,(oy+1)*s,5*s,5*s); ctx.fillStyle="#1a2b30"; ctx.fillRect((ox+2)*s,(oy+2)*s,3*s,3*s); };
-    finder(0,0); finder(n-7,0); finder(0,n-7); },
-
-  /* ---------- recruit (SMS link) ---------- */
+  /* ---------- recruit ---------- */
   formatPhone(d){ if(!d) return ""; let s="("+d.slice(0,3); if(d.length>3) s+=") "+d.slice(3,6); if(d.length>6) s+="-"+d.slice(6,10); return s; },
   phonePress(k){ if(k==="del"){ this.setState(s=>({recruitPhone:(s.recruitPhone||"").slice(0,-1)})); return; }
     if(k==="clr"){ this.setState({recruitPhone:""}); return; }
-    this.setState(s=>({recruitPhone:((s.recruitPhone||"")+k).replace(/\D/g,"").slice(0,10)})); this.armIdle(); },
-  sendLink(){ if((this.state.recruitPhone||"").length!==10 || this.state.recruitSending) return;
-    this.setState({recruitSending:true}); clearTimeout(this.sendT);
-    this.sendT=setTimeout(()=>this.setState({recruitSending:false, recruitSent:true}), 1300); },
+    this.setState(s=>({recruitPhone:((s.recruitPhone||"")+k).replace(/\D/g,"").slice(0,10)})); },
+  sendLink(){ if((this.state.recruitPhone||"").length!==10 || this.state.recruitSending) return; this.setState({recruitSending:true}); clearTimeout(this.sendT);
+    this.sendT=setTimeout(()=>{ this.setState({recruitSending:false, recruitSent:true}); this.sendT2=setTimeout(()=>this.finishFlow(), 2200); }, 1300); },
 
   /* ---------- admin ---------- */
   saveMetrics(m){ try{ localStorage.setItem(this.MET, JSON.stringify(m)); }catch(e){} },
-  saveConfigState(qs, bump){ const v=bump?(this.state.configVersion+1):this.state.configVersion;
-    try{ localStorage.setItem(this.CFG, JSON.stringify({version:v, questions:qs})); }catch(e){} this.setState({questions:qs, configVersion:v}); },
   openLock(){ clearTimeout(this.idleT); this.setState({screen:"lock", passEntry:"", passErr:false}); },
   pressPad(d){ if(d==="del"){ this.setState(s=>({passEntry:s.passEntry.slice(0,-1), passErr:false})); return; }
     if(d==="clr"){ this.setState({passEntry:"", passErr:false}); return; }
@@ -275,92 +408,56 @@ const App = {
       else { this.setState({passEntry:v}); setTimeout(()=>this.setState({passEntry:"", passErr:true}),260); } }
     else { this.setState({passEntry:v, passErr:false}); } },
   exitAdmin(){ this.setState({screen:"attract", draft:null, editIdx:-1}); },
-  newBlankQuestion(){ return { id:"q"+Date.now().toString(36), type:"swipe", text:"new question", no:{key:"no",label:"no"}, yes:{key:"yes",label:"yes"}, scale:[{key:"1",label:"1"},{key:"2",label:"2"},{key:"3",label:"3"},{key:"4",label:"4"},{key:"5",label:"5"}], randomize:false, showDist:true, minN:5 }; },
+  openAdmin(){ this.setState({screen:"admin"}); },
+  openPages(){ this.setState({screen:"pages"}); },
+  openBranding(){ this.setState({screen:"branding"}); },
+  openSettings(){ this.setState({screen:"settings", settingsSaved:false}); },
+  setSetting(f,v){ this.setState(s=>({settings:Object.assign({}, s.settings, {[f]:v}), settingsSaved:false})); },
+  saveSettings(){ try{ localStorage.setItem(this.SET, JSON.stringify(this.state.settings)); }catch(e){} this.setState({settingsSaved:true}); },
+  newBlankQuestion(){ return { id:"q"+Date.now().toString(36), type:"swipe", text:"new question", no:{key:"no",label:"no"}, yes:{key:"yes",label:"yes"}, scale:[{key:"1",label:"low"},{key:"2",label:""},{key:"3",label:""},{key:"4",label:""},{key:"5",label:"high"}], likertMode:"buttons", sliderRange:"1-5", sliderLabels:{left:"",center:"",right:""}, options:[{key:"a",label:"option a"},{key:"b",label:"option b"},{key:"c",label:"option c"}], multiSelect:false, cond:null, randomize:false, showDist:true, minN:5 }; },
   addQuestion(){ this.setState({screen:"editq", editIdx:-1, draft:this.newBlankQuestion()}); },
-  editQuestion(i){ const d=JSON.parse(JSON.stringify(this.state.questions[i])); if(!d.no)d.no={key:"no",label:"no"}; if(!d.yes)d.yes={key:"yes",label:"yes"}; if(!d.scale)d.scale=[{key:"1",label:"1"},{key:"2",label:"2"},{key:"3",label:"3"}]; if(d.randomize==null)d.randomize=false; if(d.showDist==null)d.showDist=true; if(d.minN==null)d.minN=5; this.setState({screen:"editq", editIdx:i, draft:d}); },
-  dupQuestion(i){ const qs=this.state.questions.slice(); const c=JSON.parse(JSON.stringify(qs[i])); c.id="q"+Date.now().toString(36); qs.splice(i+1,0,c); this.saveConfigState(qs,true); },
-  deleteQuestion(i){ if(this.state.questions.length<=1) return; const qs=this.state.questions.slice(); qs.splice(i,1); this.saveConfigState(qs,true); },
-  moveQuestion(i,dir){ const j=i+dir; if(j<0||j>=this.state.questions.length) return; const qs=this.state.questions.slice(); const t=qs[i]; qs[i]=qs[j]; qs[j]=t; this.saveConfigState(qs,true); },
+  editQuestion(i){ const d=JSON.parse(JSON.stringify(this.cur().questions[i])); if(!d.no)d.no={key:"no",label:"no"}; if(!d.yes)d.yes={key:"yes",label:"yes"}; if(!d.scale)d.scale=[{key:"1",label:""},{key:"2",label:""},{key:"3",label:""}]; if(!d.options)d.options=[{key:"a",label:"option a"},{key:"b",label:"option b"}]; if(!d.likertMode)d.likertMode="buttons"; if(!d.sliderRange)d.sliderRange="1-5"; if(!d.sliderLabels)d.sliderLabels={left:"",center:"",right:""}; if(d.multiSelect==null)d.multiSelect=false; if(d.cond===undefined)d.cond=null; if(d.randomize==null)d.randomize=false; if(d.showDist==null)d.showDist=true; if(d.minN==null)d.minN=5; this.setState({screen:"editq", editIdx:i, draft:d}); },
+  dupQuestion(i){ const qs=this.cur().questions.slice(); const c=JSON.parse(JSON.stringify(qs[i])); c.id="q"+Date.now().toString(36); qs.splice(i+1,0,c); this.updateActive({questions:qs}, true); },
+  deleteQuestion(i){ if(this.cur().questions.length<=1) return; const qs=this.cur().questions.slice(); qs.splice(i,1); this.updateActive({questions:qs}, true); },
+  moveQuestion(i,dir){ const qs=this.cur().questions.slice(); const j=i+dir; if(j<0||j>=qs.length) return; const t=qs[i]; qs[i]=qs[j]; qs[j]=t; this.updateActive({questions:qs}, true); },
   setDraft(patch){ this.setState(s=>({draft:Object.assign({}, s.draft, patch)})); },
   setDraftScale(idx,label){ this.setState(s=>{ const sc=s.draft.scale.slice(); sc[idx]=Object.assign({},sc[idx],{label}); return {draft:Object.assign({},s.draft,{scale:sc})}; }); },
-  addScalePoint(){ this.setState(s=>{ if(s.draft.scale.length>=7) return {}; const sc=s.draft.scale.slice(); sc.push({key:String(sc.length+1),label:String(sc.length+1)}); return {draft:Object.assign({},s.draft,{scale:sc})}; }); },
-  removeScalePoint(){ this.setState(s=>{ if(s.draft.scale.length<=2) return {}; return {draft:Object.assign({},s.draft,{scale:s.draft.scale.slice(0,-1)})}; }); },
+  addScalePoint(){ this.setState(s=>{ if(s.draft.scale.length>=11) return {}; const sc=s.draft.scale.slice(); sc.push({key:String(sc.length+1),label:""}); return {draft:Object.assign({},s.draft,{scale:sc})}; }); },
+  removeScalePoint(){ this.setState(s=>{ if(s.draft.scale.length<=3) return {}; return {draft:Object.assign({},s.draft,{scale:s.draft.scale.slice(0,-1)})}; }); },
+  addOption(){ this.setState(s=>{ if(s.draft.options.length>=8) return {}; const op=s.draft.options.slice(); op.push({key:"o"+Date.now().toString(36)+op.length, label:"new option", img:null}); return {draft:Object.assign({},s.draft,{options:op})}; }); },
+  setDraftOpt(idx, field, val){ this.setState(s=>{ const op=s.draft.options.slice(); op[idx]=Object.assign({},op[idx],{[field]:val}); return {draft:Object.assign({},s.draft,{options:op})}; }); },
+  delOption(idx){ this.setState(s=>{ if(s.draft.options.length<=2) return {}; const op=s.draft.options.slice(); op.splice(idx,1); return {draft:Object.assign({},s.draft,{options:op})}; }); },
+  onOptImg(idx, input){ const f=input.files&&input.files[0]; this.readImg(f,(d)=>this.setDraftOpt(idx,"img",d)); },
   cancelEdit(){ this.setState({screen:"admin", draft:null, editIdx:-1}); },
-  saveQuestion(){ const d=this.state.draft; if(!d) return; const qs=this.state.questions.slice(); if(this.state.editIdx<0){ qs.push(d); } else { qs[this.state.editIdx]=d; } this.saveConfigState(qs,true); this.setState({screen:"admin", draft:null, editIdx:-1}); },
+  saveQuestion(){ const d=this.state.draft; if(!d) return; const qs=this.cur().questions.slice(); if(this.state.editIdx<0){ qs.push(d); } else { qs[this.state.editIdx]=d; } this.updateActive({questions:qs}, true); this.setState({screen:"admin", draft:null, editIdx:-1}); },
   exportDecipher(){ let resp=[]; try{ resp=JSON.parse(localStorage.getItem(this.RESP)||"[]"); }catch(e){}
-    const rows=resp.map((r,i)=>({ record:i+1, uuid:r.session_id, qtime:r.time_to_answer_ms, date:r.timestamp, device_id:r.device_id, config_version:r.config_version, question_id:r.question_id, response_type:r.response_type, response_value:r.response_value, option_order_shown:(r.option_order_shown||[]).join("|"), sequence_index:r.sequence_index }));
-    try{ const blob=new Blob([JSON.stringify(rows,null,2)],{type:"application/json"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="pulse_export_v"+this.state.configVersion+".json"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1500); }catch(e){}
+    const rows=resp.map((r,i)=>({ record:i+1, uuid:r.session_id, qtime:r.time_to_answer_ms, date:r.timestamp, device_id:r.device_id, survey_id:r.survey_id, config_version:r.config_version, question_id:r.question_id, response_type:r.response_type, response_value:r.response_value, option_order_shown:(r.option_order_shown||[]).join("|"), sequence_index:r.sequence_index }));
+    try{ const blob=new Blob([JSON.stringify(rows,null,2)],{type:"application/json"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="pulse_export_"+this.cur().id+"_v"+(this.cur().version||1)+".json"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1500); }catch(e){}
     const m=Object.assign({}, this.state.metrics, {lastExport:Date.now()}); this.saveMetrics(m); this.setState({metrics:m}); },
 
-  /* ============================================================
-     renderVals — reproduced from the original (style objects)
-     ============================================================ */
+  /* ---------- theme ---------- */
+  contrast(hex){ try{ let h=(hex||"#1a2b30").replace("#",""); if(h.length===3)h=h.split("").map(c=>c+c).join(""); const r=parseInt(h.slice(0,2),16), g=parseInt(h.slice(2,4),16), b=parseInt(h.slice(4,6),16); const L=(0.299*r+0.587*g+0.114*b)/255; return L>0.6?"#1a2b30":"#fffcfa"; }catch(e){ return "#fffcfa"; } },
+  logoImg(src, style){ return (typeof src==="string"&&src) ? `<img src="${esc(src)}" alt="" style="${style}" />` : ""; },
+
+  /* ============================================================ renderVals ============================================================ */
   renderVals(){
-    const sc=this.state.screen, ph=this.state.phase;
-    const q=this.state.questions[this.state.qIndex]||this.state.questions[0];
-    const vals={ isAttract:sc==="attract", isConsent:sc==="consent", isQuestion:sc==="question",
-      isVideo:sc==="video", isCapture:sc==="capture", isReview:sc==="review", isRecruit:sc==="recruit",
-      isThanks:sc==="thanks", idleWarn:this.state.idleWarn, warnLeft:this.state.warnLeft,
-      isAsking:ph==="asking", isRevealed:ph==="revealed",
-      revealPrompt:(sc==="question"&&ph==="revealed"&&this.state.revealPrompt),
-      recording:this.state.recording, notRecording:!this.state.recording, camDenied:this.state.camDenied,
-      reviewLen:this.state.reviewLen||"short", revealBig:this.state.countDisp||0 };
-    vals.dots=this.state.questions.map((_,i)=>{ const answered=(i<this.state.qIndex)||(i===this.state.qIndex&&ph==="revealed"); const cur=i===this.state.qIndex;
-      return { style:{ width:cur?"30px":"12px", height:"12px", borderRadius:"999px",
-        background: answered?"var(--insight-black)":(cur?"var(--insight-black)":"transparent"),
-        border:"2px solid var(--insight-black)", opacity:(cur||answered)?"1":".3",
-        transition:"all .25s var(--ease-standard)", display:"inline-block" } }; });
-    const m=Math.floor(this.state.recSec/60), s2=this.state.recSec%60;
-    vals.recClock=m+":"+(s2<10?"0":"")+s2;
-    vals.recHint=this.state.recording?"press and hold to stop":"tap to start recording";
-    vals.recBtnStyle={ width:"84px", height:"84px", borderRadius:"50%", border:"5px solid var(--system-white)", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:"0", transition:"transform .12s", touchAction:"none" };
-    vals.recDotStyle=this.state.recording?{ width:"30px", height:"30px", borderRadius:"6px", background:"var(--index-red)", display:"block" }:{ width:"56px", height:"56px", borderRadius:"50%", background:"var(--index-red)", display:"block" };
-    const _rc=2*Math.PI*48; vals.ringCirc=_rc; vals.ringOffset=_rc*(1-(this.state.holdPct||0)/100);
-    vals.qNum=this.state.qIndex+1; vals.qTotal=this.state.questions.length;
-    vals.headerLabel= ph==="revealed" ? ("question "+vals.qNum+" of "+vals.qTotal+" \u00b7 results") : ("question "+vals.qNum+" of "+vals.qTotal);
-    vals.qText=q.text; vals.isSwipe=q.type==="swipe"; vals.isLikert=q.type==="likert";
-    if(q.type==="swipe"){ vals.yesLabel=q.yes.label; vals.noLabel=q.no.label; }
-    if(q.type==="likert"){ vals.likertSegments=q.scale.map((seg,i)=>({ key:seg.key, label:seg.label, num:i+1, qid:q.id,
-      style:{ flex:"1", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", fontFamily:"inherit", cursor:"pointer", borderRadius:"12px", border:"2px solid var(--insight-black)", background:"var(--system-white)", color:"var(--insight-black)", padding:"24px 8px", transition:"transform .12s var(--ease-standard), background .12s, color .12s" } })); }
-    if(sc==="question"&&ph==="revealed"){ const r=this.getReveal(); if(r){ const grow=this.state.revealGrow!=null?this.state.revealGrow:1;
-      vals.revealChoice=r.choiceLabel; vals.revealQ=r.q.text; vals.revealSuffix=r.smallN?"":"%";
-      vals.revealCaption=r.smallN?"so far — be one of the first":"chose the same as you";
-      vals.nextLabel=(this.state.qIndex+1>=this.state.questions.length)?"finish questions":"next";
-      vals.revealBars=r.bars.map(b=>({ label:b.label, pctText:b.pctText, isChosen:b.isChosen,
-        labelStyle:{ width:"150px", textAlign:"right", fontSize:"19px", fontWeight:b.isChosen?"800":"400", textTransform:"lowercase", opacity:b.isChosen?"1":".55", color:"var(--insight-black)" },
-        pctStyle:{ width:"82px", fontSize:b.isChosen?"30px":"22px", fontWeight:b.isChosen?"900":"600", color:b.isChosen?"var(--vector-orange)":"var(--fg-tertiary)" },
-        fillStyle:{ position:"absolute", left:"0", top:"0", height:"100%", width:(b.pct*grow)+"%", minWidth:(b.pct>0&&grow>0.04)?"8px":"0", background:b.isChosen?"var(--vector-orange)":"color-mix(in srgb, var(--insight-black) 22%, transparent)", borderRadius:"6px" } })); } }
-    if(sc==="thanks"){ const cols=["var(--vector-orange)","var(--metric-blue)","var(--signal-yellow)","var(--datum-pink)","var(--purple-axis)","var(--measured-purple)"];
-      vals.confetti=Array.from({length:14}).map((_,i)=>{ const left=(i*8.3+(i%3)*4)%100; const sq=i%2===0;
-        return { style:{ position:"absolute", top:"-30px", left:left+"%", width:sq?"16px":"14px", height:sq?"16px":"14px", borderRadius:sq?"3px":"50%", background:cols[i%cols.length], animation:"confettiFall "+(4+(i%4)*0.8)+"s linear "+(i*0.4)+"s infinite" } }; }); }
-    vals.isLock=sc==="lock"; vals.isAdmin=sc==="admin"; vals.isEditq=sc==="editq"; vals.configVersion=this.state.configVersion; vals.passErr=this.state.passErr;
-    vals.passDots=[0,1,2,3].map(i=>({ style:{ width:"20px", height:"20px", borderRadius:"50%", background:(this.state.passEntry.length>i)?"var(--system-white)":"transparent", border:"2px solid var(--system-white)", display:"inline-block" } }));
-    vals.padKeys=["1","2","3","4","5","6","7","8","9","clr","0","del"].map(k=>({ k, label:(k==="del"?"\u232b":k),
-      style:{ fontFamily:"inherit", fontSize:(k==="clr"||k==="del")?"17px":"30px", fontWeight:"700", background:"var(--system-white)", border:"2px solid color-mix(in srgb, var(--insight-black) 16%, transparent)", borderRadius:"14px", color:"var(--insight-black)", cursor:"pointer", height:"72px", display:"flex", alignItems:"center", justifyContent:"center", textTransform:"lowercase" } }));
-    const _M=this.state.metrics||{};
-    vals.mInteractions=_M.interactions||0; vals.mVideo=_M.videoConsents||0; vals.mSessions=_M.sessions||0;
-    vals.mLastExport=_M.lastExport? new Date(_M.lastExport).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : "not yet";
-    vals.adminQuestions=this.state.questions.map((qq,i)=>({ num:i+1, typeLabel:qq.type, text:qq.text,
-      meta: qq.type==="likert" ? ((qq.scale?qq.scale.length:0)+"-point \u00b7 min n "+(qq.minN!=null?qq.minN:5)) : ((((qq.no&&qq.no.label)||"no"))+" / "+(((qq.yes&&qq.yes.label)||"yes"))+" \u00b7 min n "+(qq.minN!=null?qq.minN:5)),
-      badgeStyle:{ fontSize:"11px", fontWeight:"800", letterSpacing:".06em", textTransform:"lowercase", padding:"5px 11px", borderRadius:"999px", flex:"none", color: qq.type==="swipe"?"var(--system-white)":"var(--insight-black)", background: qq.type==="swipe"?"var(--measured-purple)":"var(--metric-blue)" } }));
-    if(sc==="editq"&&this.state.draft){ const d=this.state.draft;
-      vals.editTitle=this.state.editIdx<0?"new question":"edit question"; vals.dText=d.text; vals.dIsSwipe=d.type==="swipe"; vals.dIsLikert=d.type==="likert";
-      vals.dNoLabel=(d.no&&d.no.label)||""; vals.dYesLabel=(d.yes&&d.yes.label)||""; vals.dRandomize=!!d.randomize; vals.dShowDist=d.showDist!==false; vals.dMinN=d.minN!=null?d.minN:5;
-      vals.dScale=(d.scale||[]).map((sp,idx)=>({ num:idx+1, label:sp.label, idx }));
-      const segOn={ flex:"1", fontFamily:"inherit", fontSize:"18px", fontWeight:"700", padding:"14px", borderRadius:"10px", cursor:"pointer", border:"2px solid var(--insight-black)", background:"var(--insight-black)", color:"var(--system-white)", textTransform:"lowercase" };
-      const segOff={ flex:"1", fontFamily:"inherit", fontSize:"18px", fontWeight:"700", padding:"14px", borderRadius:"10px", cursor:"pointer", border:"2px solid var(--insight-black)", background:"var(--system-white)", color:"var(--insight-black)", textTransform:"lowercase" };
-      vals.swipeTabStyle=vals.dIsSwipe?segOn:segOff; vals.likertTabStyle=vals.dIsLikert?segOn:segOff;
-      const tgOn={ width:"56px", height:"30px", borderRadius:"999px", background:"var(--insight-black)", position:"relative", cursor:"pointer", border:"none", flex:"none" };
-      const tgOff={ width:"56px", height:"30px", borderRadius:"999px", background:"color-mix(in srgb, var(--insight-black) 20%, transparent)", position:"relative", cursor:"pointer", border:"none", flex:"none" };
-      vals.randomTgStyle=vals.dRandomize?tgOn:tgOff; vals.distTgStyle=vals.dShowDist?tgOn:tgOff;
-      vals.randomKnob={ position:"absolute", top:"3px", left:(vals.dRandomize?"29px":"3px"), width:"24px", height:"24px", borderRadius:"50%", background:"var(--system-white)", transition:"left .15s" };
-      vals.distKnob={ position:"absolute", top:"3px", left:(vals.dShowDist?"29px":"3px"), width:"24px", height:"24px", borderRadius:"50%", background:"var(--system-white)", transition:"left .15s" }; }
-    return vals;
+    const sc=this.state.screen, ph=this.state.phase, survey=this.cur();
+    const q=survey.questions[this.state.qIndex]||survey.questions[0];
+    const T=survey.branding||{}; const primary=T.primary||"#1a2b30", accent=T.accent||"#d97340", button=T.button||"#1a2b30";
+    const onPrimary=this.contrast(primary), onAccent=this.contrast(accent), onButton=this.contrast(button);
+    const tx=survey.text||{};
+    const v={ sc, ph, survey, q, primary, accent, button, onPrimary, onAccent, onButton, tx,
+      isAttract:sc==="attract", isConsent:sc==="consent", isQuestion:sc==="question", isVideo:sc==="video",
+      isCapture:sc==="capture", isReview:sc==="review", isRecruit:sc==="recruit", isThanks:sc==="thanks",
+      isLock:sc==="lock", isAdmin:sc==="admin", isEditq:sc==="editq", isPages:sc==="pages", isBranding:sc==="branding", isSettings:sc==="settings",
+      idleWarn:this.state.idleWarn, warnLeft:this.state.warnLeft, isAsking:ph==="asking", isRevealed:ph==="revealed",
+      recording:this.state.recording, camDenied:this.state.camDenied, reviewLen:this.state.reviewLen||"short",
+      hasLogo:!!T.logo, logo:T.logo||"", configVersion:survey.version||1, activeName:survey.name,
+      recSec:this.state.recSec };
+    // theme css for likert buttons / multi via inline (no hover)
+    return v;
   },
 
-  /* ============================================================
-     SCREEN MARKUP (reproduced from the original template)
-     ============================================================ */
   render(){
     const v=this.renderVals(); let html="";
     if(v.isAttract) html=this.scAttract(v);
@@ -374,6 +471,9 @@ const App = {
     else if(v.isLock) html=this.scLock(v);
     else if(v.isAdmin) html=this.scAdmin(v);
     else if(v.isEditq) html=this.scEditor(v);
+    else if(v.isPages) html=this.scPages(v);
+    else if(v.isBranding) html=this.scBranding(v);
+    else if(v.isSettings) html=this.scSettings(v);
     if(v.idleWarn) html += this.scIdle(v);
     document.getElementById("screen").innerHTML=html;
     const vp=document.getElementById("viewport"); if(vp) vp.style.background=this.bgFor();
@@ -381,19 +481,22 @@ const App = {
   },
 
   postRender(v){
-    const prev=this._lastScreen, cur=this.state.screen;
-    this._lastScreen=cur; // update first so nested renders (from setState in side-effects) don't re-trigger
+    const prev=this._lastScreen, cur=this.state.screen; this._lastScreen=cur;
     if(prev==="capture" && cur!=="capture") this.stopCamera();
-    if(v.isQuestion && v.isAsking && v.isSwipe){ const card=document.getElementById("swipeCard");
-      if(card){ card.addEventListener("pointerdown",e=>this.onSwipeStart(e)); card.addEventListener("pointermove",e=>this.onSwipeMove(e)); card.addEventListener("pointerup",()=>this.onSwipeEnd()); card.addEventListener("pointercancel",()=>this.onSwipeEnd()); } }
-    if(v.isQuestion && v.isRevealed && !this._countDone){ this._countDone=true; this.animateReveal(); }
-    if(!(v.isQuestion && v.isRevealed)) this._countDone=false;
     if(prev!=="capture" && cur==="capture") this.startCamera();
     if(cur==="capture" && this.stream){ const vid=document.getElementById("camVideo"); if(vid && vid.srcObject!==this.stream){ vid.srcObject=this.stream; vid.play&&vid.play().catch(()=>{}); } }
+    if(v.isQuestion && v.isAsking && v.q.type==="swipe"){ const card=document.getElementById("swipeCard");
+      if(card){ card.addEventListener("pointerdown",e=>this.onSwipeStart(e)); card.addEventListener("pointermove",e=>this.onSwipeMove(e)); card.addEventListener("pointerup",()=>this.onSwipeEnd()); card.addEventListener("pointercancel",()=>this.onSwipeEnd()); } }
+    if(v.isQuestion && v.isAsking && v.q.type==="likert" && (v.q.likertMode||"buttons")==="slider"){ const tr=document.getElementById("sliderTrack");
+      if(tr){ tr.addEventListener("pointerdown",e=>this.onSliderDown(e)); tr.addEventListener("pointermove",e=>this.onSliderMove(e)); tr.addEventListener("pointerup",()=>this.onSliderUp()); tr.addEventListener("pointercancel",()=>this.onSliderUp()); } }
+    if(v.isQuestion && v.isRevealed && !this._countDone){ this._countDone=true; this.animateReveal(); }
+    if(!(v.isQuestion && v.isRevealed)) this._countDone=false;
   },
 
-  scAttract(){ return `
-  <div onclick="App.startSession()" style="position:absolute;inset:0;background:var(--insight-black);color:var(--system-white);cursor:pointer;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+  /* ============================================================ screens ============================================================ */
+  scAttract(v){
+    return `
+  <div onclick="App.startSession()" style="position:absolute;inset:0;background:${v.primary};color:${v.onPrimary};cursor:pointer;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;">
     <div style="position:absolute;width:340px;height:340px;border-radius:50%;background:var(--anchor-green);opacity:.16;top:-120px;left:-90px;animation:floaty 9s ease-in-out infinite;"></div>
     <div style="position:absolute;width:260px;height:130px;border-radius:260px 260px 0 0;background:var(--vector-orange);opacity:.18;bottom:-10px;right:120px;animation:floaty2 11s ease-in-out infinite;"></div>
     <div style="position:absolute;width:180px;height:180px;border-radius:50%;background:var(--metric-blue);opacity:.14;bottom:90px;left:90px;animation:floaty 7.5s ease-in-out infinite;"></div>
@@ -401,318 +504,435 @@ const App = {
     <div style="position:absolute;width:64px;height:64px;border-radius:50%;background:var(--datum-pink);opacity:.5;top:200px;left:280px;animation:floaty2 6s ease-in-out infinite;"></div>
     <div style="position:absolute;width:30px;height:30px;border-radius:50%;background:var(--purple-axis);opacity:.7;bottom:200px;right:330px;animation:floaty 5s ease-in-out infinite;"></div>
     <img src="${LOGOS.horizWhite}" alt="Insightrix" style="height:46px;margin-bottom:8px;opacity:.95;position:relative;" />
-    <div style="font-size:13px;letter-spacing:.18em;text-transform:lowercase;opacity:.55;margin-bottom:54px;position:relative;">with saskwatch · exchange folk festival</div>
+    <div style="font-size:13px;letter-spacing:.18em;text-transform:lowercase;opacity:.55;margin-bottom:54px;position:relative;">${esc(v.tx.attractEyebrow)}</div>
     <div style="position:relative;width:200px;height:200px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;">
-      <div style="position:absolute;width:200px;height:200px;border-radius:50%;border:2px solid var(--system-white);opacity:.5;animation:ripple 2.6s ease-out infinite;"></div>
-      <div style="position:absolute;width:200px;height:200px;border-radius:50%;border:2px solid var(--system-white);opacity:.5;animation:ripple 2.6s ease-out infinite 1.3s;"></div>
-      <div style="width:128px;height:128px;border-radius:50%;background:var(--signal-yellow);display:flex;align-items:center;justify-content:center;animation:pulseTap 2.2s ease-in-out infinite;">
-        <div style="width:34px;height:34px;border-radius:50%;background:var(--insight-black);"></div></div>
+      <div style="position:absolute;width:200px;height:200px;border-radius:50%;border:2px solid currentColor;opacity:.4;animation:ripple 2.6s ease-out infinite;"></div>
+      <div style="position:absolute;width:200px;height:200px;border-radius:50%;border:2px solid currentColor;opacity:.4;animation:ripple 2.6s ease-out infinite 1.3s;"></div>
+      <div style="width:128px;height:128px;border-radius:50%;background:${v.accent};display:flex;align-items:center;justify-content:center;animation:pulseTap 2.2s ease-in-out infinite;"><div style="width:34px;height:34px;border-radius:50%;background:${v.accentText||this.contrast(v.accent)};"></div></div>
     </div>
-    <div style="font-weight:900;font-size:82px;line-height:.98;letter-spacing:-.03em;text-align:center;position:relative;text-wrap:balance;">tap to have<br>your say</div>
-    <div style="font-weight:300;font-size:24px;opacity:.7;margin-top:22px;position:relative;">5 quick taps · about 60 seconds · totally anonymous</div>
+    <div style="font-weight:900;font-size:82px;line-height:.98;letter-spacing:-.03em;text-align:center;position:relative;text-wrap:balance;max-width:14ch;">${esc(v.tx.attractTitle)}</div>
+    <div style="font-weight:300;font-size:24px;opacity:.7;margin-top:22px;position:relative;">${esc(v.tx.attractSub)}</div>
     <div onclick="event.stopPropagation();App.openLock()" style="position:absolute;bottom:20px;left:22px;width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.38;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--system-white)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg></div>
-    <div style="position:absolute;bottom:26px;font-style:italic;font-size:15px;opacity:.45;">the art of research™</div>
-  </div>`; },
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+    </div>
+    <div style="position:absolute;bottom:26px;font-style:italic;font-size:15px;opacity:.45;">the art of research\u2122</div>
+  </div>`;
+  },
 
-  scConsent(){ return `
+  scConsent(v){
+    const bcols=["var(--anchor-green)","var(--metric-blue)","var(--vector-orange)","var(--signal-yellow)"];
+    const bullets=(v.tx.bullets||[]).map((b,i)=>`<div style="display:flex;align-items:flex-start;gap:18px;"><span style="flex:none;width:16px;height:16px;border-radius:50%;background:${bcols[i%bcols.length]};margin-top:5px;"></span><span style="font-size:22px;font-weight:300;line-height:1.35;"><b style="font-weight:700;">${esc(b.bold)}</b> ${esc(b.text)}</span></div>`).join("");
+    const cross = v.hasLogo ? `<span style="font-size:15px;color:var(--fg-tertiary);">\u00d7</span>${this.logoImg(v.logo,"height:30px;max-width:200px;object-fit:contain;")}` : "";
+    return `
   <div style="position:absolute;inset:0;background:var(--system-white);display:flex;flex-direction:column;padding:64px 88px;box-sizing:border-box;">
-    <div style="display:flex;align-items:center;gap:14px;">
-      <img src="${LOGOS.horizBlack}" alt="Insightrix" style="height:30px;" />
-      <span style="font-size:15px;color:var(--fg-tertiary);">×</span>
-      <img src="${LOGOS.swBlack}" alt="SaskWatch" style="height:21px;" />
-    </div>
-    <div style="font-size:13px;letter-spacing:.16em;text-transform:lowercase;color:var(--fg-tertiary);font-weight:600;margin-top:46px;">before we start</div>
-    <div style="font-weight:800;font-size:56px;line-height:1.02;letter-spacing:-.025em;margin-top:10px;max-width:18ch;">a quick, anonymous check-in.</div>
-    <div style="display:flex;flex-direction:column;gap:18px;margin-top:36px;max-width:780px;">
-      <div style="display:flex;align-items:flex-start;gap:18px;"><span style="flex:none;width:16px;height:16px;border-radius:50%;background:var(--anchor-green);margin-top:5px;"></span><span style="font-size:22px;font-weight:300;line-height:1.35;"><b style="font-weight:700;">who's asking —</b> Insightrix &amp; SaskWatch are gathering festival opinions today.</span></div>
-      <div style="display:flex;align-items:flex-start;gap:18px;"><span style="flex:none;width:16px;height:16px;border-radius:50%;background:var(--metric-blue);margin-top:5px;"></span><span style="font-size:22px;font-weight:300;line-height:1.35;"><b style="font-weight:700;">anonymous —</b> your taps are never tied to your name.</span></div>
-      <div style="display:flex;align-items:flex-start;gap:18px;"><span style="flex:none;width:16px;height:16px;border-radius:50%;background:var(--vector-orange);margin-top:5px;"></span><span style="font-size:22px;font-weight:300;line-height:1.35;"><b style="font-weight:700;">your call —</b> stop anytime. just walk away and it clears.</span></div>
-      <div style="display:flex;align-items:flex-start;gap:18px;"><span style="flex:none;width:16px;height:16px;border-radius:50%;background:var(--signal-yellow);margin-top:5px;"></span><span style="font-size:22px;font-weight:300;line-height:1.35;"><b style="font-weight:700;">finish &amp; you're in —</b> complete the set to enter the festival prize draw.</span></div>
-    </div>
+    <div style="display:flex;align-items:center;gap:14px;height:34px;"><img src="${LOGOS.horizBlack}" alt="Insightrix" style="height:30px;" />${cross}</div>
+    <div style="font-size:13px;letter-spacing:.16em;text-transform:lowercase;color:var(--fg-tertiary);font-weight:600;margin-top:46px;">${esc(v.tx.consentEyebrow)}</div>
+    <div style="font-weight:800;font-size:56px;line-height:1.02;letter-spacing:-.025em;margin-top:10px;max-width:18ch;">${esc(v.tx.consentTitle)}</div>
+    <div style="display:flex;flex-direction:column;gap:18px;margin-top:36px;max-width:780px;">${bullets}</div>
     <div style="margin-top:auto;display:flex;align-items:center;gap:28px;">
-      <button onclick="App.startSession2()" style="font-family:inherit;border:none;cursor:pointer;background:var(--insight-black);color:var(--system-white);font-weight:700;font-size:26px;padding:24px 56px;border-radius:999px;letter-spacing:-.01em;">let's go</button>
-      <button onclick="App.restart()" style="font-family:inherit;border:none;background:none;cursor:pointer;color:var(--fg-tertiary);font-size:19px;text-decoration:underline;text-underline-offset:3px;">no thanks</button>
-      <div style="margin-left:auto;max-width:300px;font-size:13px;line-height:1.4;color:var(--fg-muted);">directional &amp; illustrative — not weighted or projectable to any population.</div>
+      <button onclick="App.startSession2()" style="font-family:inherit;border:none;cursor:pointer;background:${v.button};color:${v.onButton};font-weight:700;font-size:26px;padding:24px 56px;border-radius:999px;letter-spacing:-.01em;">${esc(v.tx.consentCta)}</button>
+      <button onclick="App.restart()" style="font-family:inherit;border:none;background:none;cursor:pointer;color:var(--fg-tertiary);font-size:19px;text-decoration:underline;text-underline-offset:3px;">${esc(v.tx.consentDecline)}</button>
+      <div style="margin-left:auto;max-width:300px;font-size:13px;line-height:1.4;color:var(--fg-muted);">directional &amp; illustrative \u2014 not weighted or projectable to any population.</div>
     </div>
-  </div>`; },
+  </div>`;
+  },
 
   scQuestion(v){
+    const survey=v.survey, q=v.q, accent=v.accent, primary=v.primary, onPrimary=v.onPrimary, onAccent=v.onAccent, button=v.button, onButton=v.onButton;
+    const qNum=this.state.qIndex+1, qTotal=survey.questions.length;
+    const headerLabel = v.ph==="revealed" ? ("question "+qNum+" of "+qTotal+" \u00b7 results") : ("question "+qNum+" of "+qTotal);
+    const dots=survey.questions.map((_,i)=>{ const answered=(i<this.state.qIndex)||(i===this.state.qIndex&&v.ph==="revealed"); const cur=i===this.state.qIndex;
+      return `<span style="width:${cur?"30px":"12px"};height:12px;border-radius:999px;background:${(answered||cur)?primary:"transparent"};border:2px solid ${primary};opacity:${(cur||answered)?"1":".3"};transition:all .25s var(--ease-standard);display:inline-block;"></span>`; }).join("");
+    const qTitleStyle="font-weight:800;font-size:48px;line-height:1.05;letter-spacing:-.025em;text-align:center;max-width:22ch;margin:0 auto 12px;text-wrap:balance;";
     let body="";
-    if(v.isAsking){
-      if(v.isSwipe){
-        body=`
-        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;">
+    if(v.ph==="asking"){
+      const order=(this.state.optOrder&&this.state.optOrder.length)?this.state.optOrder:this.orderFor(q);
+      const pend=this.state.pendSel; const isMS=q.type==="multi"&&q.multiSelect;
+      let inner="";
+      if(q.type==="swipe"){
+        inner=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;">
           <div id="tint" style="position:absolute;inset:-42px -72px -52px -72px;background:var(--anchor-green);opacity:0;pointer-events:none;transition:opacity .1s linear;z-index:1;"></div>
-          <div id="leftHint" onclick="App.swipeNo()" style="position:absolute;left:0;top:0;bottom:0;width:248px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--index-red);cursor:pointer;opacity:.55;transition:opacity .15s var(--ease-standard);z-index:2;">
-            <div style="font-weight:900;font-size:72px;line-height:1;">‹</div>
-            <div style="font-weight:800;font-size:32px;text-transform:lowercase;text-align:center;">${esc(v.noLabel)}</div>
-            <div style="font-size:13px;letter-spacing:.16em;text-transform:lowercase;opacity:.75;">swipe left</div></div>
-          <div id="rightHint" onclick="App.swipeYes()" style="position:absolute;right:0;top:0;bottom:0;width:248px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--anchor-green);cursor:pointer;opacity:.55;transition:opacity .15s var(--ease-standard);z-index:2;">
-            <div style="font-weight:900;font-size:72px;line-height:1;">›</div>
-            <div style="font-weight:800;font-size:32px;text-transform:lowercase;text-align:center;">${esc(v.yesLabel)}</div>
-            <div style="font-size:13px;letter-spacing:.16em;text-transform:lowercase;opacity:.75;">swipe right</div></div>
-          <div id="swipeCard" style="position:relative;z-index:3;width:600px;height:430px;background:var(--system-white);border:3px solid var(--insight-black);border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px;box-sizing:border-box;cursor:grab;touch-action:none;box-shadow:0 16px 48px rgba(26,43,48,0.14);">
-            <div style="font-size:13px;letter-spacing:.18em;text-transform:lowercase;color:var(--fg-tertiary);font-weight:700;margin-bottom:22px;">drag me ← or →</div>
-            <div style="font-weight:800;font-size:46px;line-height:1.08;letter-spacing:-.02em;text-align:center;color:var(--insight-black);text-wrap:balance;">${esc(v.qText)}</div></div>
-        </div>`;
-      } else {
-        const segs=v.likertSegments.map(seg=>`<button class="likert-seg" onclick="App.commitAnswer('${seg.qid}','${seg.key}')" style="${styleStr(seg.style)}">
-          <span style="font-weight:900;font-size:56px;line-height:1;">${seg.num}</span>
-          <span style="font-weight:600;font-size:20px;text-transform:lowercase;margin-top:14px;text-align:center;line-height:1.15;">${esc(seg.label)}</span></button>`).join("");
-        body=`
-        <div style="flex:1;display:flex;flex-direction:column;justify-content:center;">
-          <div style="font-weight:800;font-size:52px;line-height:1.05;letter-spacing:-.025em;text-align:center;max-width:20ch;margin:0 auto 12px;text-wrap:balance;">${esc(v.qText)}</div>
-          <div style="text-align:center;font-size:16px;color:var(--fg-tertiary);margin-bottom:38px;">tap your answer</div>
-          <div style="display:flex;gap:16px;height:300px;">${segs}</div>
+          <div id="leftHint" onclick="App.swipeNo()" style="position:absolute;left:0;top:0;bottom:0;width:248px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--index-red);cursor:pointer;opacity:.9;transition:opacity .15s var(--ease-standard);z-index:2;">
+            <div style="width:96px;height:96px;border-radius:50%;background:color-mix(in srgb, var(--index-red) 14%, transparent);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:70px;line-height:1;padding-bottom:8px;box-sizing:border-box;">\u2039</div>
+            <div style="font-weight:900;font-size:30px;text-transform:lowercase;text-align:center;letter-spacing:-.01em;line-height:1.1;">${esc(q.no.label)}</div>
+            <div style="font-size:13px;letter-spacing:.16em;text-transform:lowercase;font-weight:700;opacity:.85;">swipe left</div>
+          </div>
+          <div id="rightHint" onclick="App.swipeYes()" style="position:absolute;right:0;top:0;bottom:0;width:248px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--anchor-green);cursor:pointer;opacity:.9;transition:opacity .15s var(--ease-standard);z-index:2;">
+            <div style="width:96px;height:96px;border-radius:50%;background:color-mix(in srgb, var(--anchor-green) 16%, transparent);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:70px;line-height:1;padding-bottom:8px;box-sizing:border-box;">\u203a</div>
+            <div style="font-weight:900;font-size:30px;text-transform:lowercase;text-align:center;letter-spacing:-.01em;line-height:1.1;">${esc(q.yes.label)}</div>
+            <div style="font-size:13px;letter-spacing:.16em;text-transform:lowercase;font-weight:700;opacity:.85;">swipe right</div>
+          </div>
+          <div id="swipeCard" style="position:relative;z-index:3;width:500px;height:400px;background:var(--system-white);border:3px solid var(--insight-black);border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;box-sizing:border-box;cursor:grab;touch-action:none;box-shadow:0 16px 48px rgba(26,43,48,0.14);animation:cardNudge 3.6s ease-in-out 1s infinite;">
+            <div style="font-size:13px;letter-spacing:.18em;text-transform:lowercase;color:var(--fg-tertiary);font-weight:700;margin-bottom:22px;">drag me \u2190 or \u2192</div>
+            <div style="font-weight:800;font-size:46px;line-height:1.08;letter-spacing:-.02em;text-align:center;color:var(--insight-black);text-wrap:balance;">${esc(q.text)}</div>
+          </div></div>`;
+      } else if(q.type==="likert" && (q.likertMode||"buttons")==="buttons"){
+        const n=q.scale.length; const numFont=n<=5?"52px":n<=7?"40px":n<=9?"32px":"26px"; const labFont=n<=5?"18px":n<=7?"15px":"13px"; const gap=n<=6?"14px":n<=9?"9px":"6px";
+        const segs=order.map(k=>{ const sp=(q.scale||[]).find(s=>s.key===k)||{}; const idx=(q.scale||[]).findIndex(s=>s.key===k); const selected=pend===k; const hasLabel=!!(sp.label&&sp.label.length);
+          return `<button onclick="App.selectChoice('${k}')" style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:inherit;cursor:pointer;border-radius:12px;border:2px solid ${primary};padding:18px 6px;background:${selected?primary:"var(--system-white)"};color:${selected?onPrimary:"var(--insight-black)"};transition:background .12s,color .12s;">
+            <span style="font-weight:900;font-size:${numFont};line-height:1;">${idx+1}</span>${hasLabel?`<span style="font-weight:600;font-size:${labFont};text-transform:lowercase;margin-top:10px;text-align:center;line-height:1.15;">${esc(sp.label)}</span>`:""}</button>`; }).join("");
+        inner=`<div style="flex:1;display:flex;flex-direction:column;justify-content:center;"><div style="${qTitleStyle}">${esc(q.text)}</div><div style="text-align:center;font-size:16px;color:var(--fg-tertiary);margin-bottom:30px;">tap your answer</div><div style="display:flex;gap:${gap};height:280px;">${segs}</div></div>`;
+      } else if(q.type==="likert"){
+        const sp=this.sliderSpec(q); const valNum=pend!=null?Number(pend):sp.centre; const pct=((valNum-sp.min)/(sp.max-sp.min))*100;
+        const sl=q.sliderLabels||{}; const left=sl.left||String(sp.min), center=sl.center||"", right=sl.right||String(sp.max);
+        const span=sp.max-sp.min; let tickVals=[]; if(span<=10){ for(let x=sp.min;x<=sp.max;x+=sp.step) tickVals.push(x); } else { for(let b=0;b<=5;b++) tickVals.push(Math.round(sp.min+span/5*b)); }
+        const ticks=tickVals.map(x=>{ const p=((x-sp.min)/(sp.max-sp.min))*100; return `<span style="position:absolute;left:${p}%;top:0;transform:translateX(-50%);font-size:14px;font-weight:700;color:var(--fg-tertiary);">${x}</span>`; }).join("");
+        inner=`<div style="flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;"><div style="${qTitleStyle}">${esc(q.text)}</div><div style="text-align:center;font-size:16px;color:var(--fg-tertiary);margin-bottom:14px;">drag to rate</div>
+          <div id="sliderBig" style="font-weight:900;font-size:90px;line-height:1;letter-spacing:-.03em;color:${accent};">${valNum}<span style="font-size:34px;color:var(--fg-tertiary);font-weight:700;"> / ${sp.max}</span></div>
+          <div style="width:760px;max-width:84%;margin-top:30px;position:relative;">
+            <div id="sliderTrack" style="position:relative;height:46px;display:flex;align-items:center;cursor:pointer;touch-action:none;">
+              <div style="position:absolute;left:0;right:0;height:12px;border-radius:999px;background:color-mix(in srgb, var(--insight-black) 12%, transparent);"></div>
+              <div id="sliderFill" style="position:absolute;left:0;height:12px;border-radius:999px;width:${pct}%;background:${accent};"></div>
+              <div id="sliderHandle" style="position:absolute;left:${pct}%;top:50%;transform:translate(-50%,-50%);width:42px;height:42px;border-radius:50%;background:var(--system-white);border:4px solid ${accent};box-shadow:0 4px 14px rgba(26,43,48,.22);"></div>
+            </div>
+            <div style="position:relative;height:20px;margin-top:8px;">${ticks}</div>
+            <div style="display:flex;margin-top:10px;font-size:18px;font-weight:700;text-transform:lowercase;color:var(--insight-black);"><span style="flex:1;text-align:left;">${esc(left)}</span><span style="flex:1;text-align:center;color:var(--fg-tertiary);">${esc(center)}</span><span style="flex:1;text-align:right;">${esc(right)}</span></div>
+          </div></div>`;
+      } else if(q.type==="multi"){
+        const n=(q.options||[]).length; const hint=isMS?"select all that apply":"tap one"; const cols=n<=4?"1fr":n<=8?"1fr 1fr":"1fr 1fr 1fr"; const mFont=n<=6?"24px":n<=10?"19px":"16px"; const mPad=n<=6?"20px 26px":n<=10?"15px 20px":"12px 16px";
+        const opts=order.map(k=>{ const o=(q.options||[]).find(o=>o.key===k)||{}; const selected=isMS?(Array.isArray(pend)&&pend.indexOf(k)>=0):(pend===k);
+          return `<button onclick="App.selectChoice('${k}')" style="font-family:inherit;cursor:pointer;text-align:left;font-weight:700;font-size:${mFont};padding:${mPad};display:flex;align-items:center;gap:12px;border-radius:14px;border:2px solid ${selected?primary:"color-mix(in srgb, "+primary+" 35%, transparent)"};background:${selected?primary:"var(--system-white)"};color:${selected?onPrimary:"var(--insight-black)"};transition:background .12s,color .12s;">${esc(o.label)}</button>`; }).join("");
+        inner=`<div style="flex:1;display:flex;flex-direction:column;justify-content:center;min-height:0;"><div style="${qTitleStyle}">${esc(q.text)}</div><div style="text-align:center;font-size:16px;color:var(--fg-tertiary);margin-bottom:26px;">${hint}</div><div style="display:grid;grid-template-columns:${cols};gap:14px;max-width:880px;margin:0 auto;width:100%;overflow:auto;">${opts}</div></div>`;
+      } else if(q.type==="image"){
+        const n=(q.options||[]).length; const cols=n<=2?"1fr 1fr":n<=4?"1fr 1fr":"1fr 1fr 1fr"; const thumbH=n<=4?"190px":"150px";
+        const cards=order.map(k=>{ const o=(q.options||[]).find(o=>o.key===k)||{}; const selected=pend===k; const imgSrc=(typeof o.img==="string"&&o.img)?o.img:null;
+          const thumb=`<div style="width:100%;height:${thumbH};border-radius:10px;overflow:hidden;background:color-mix(in srgb, var(--insight-black) 6%, transparent);display:flex;align-items:center;justify-content:center;">${imgSrc?`<img src="${esc(imgSrc)}" alt="" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;display:block;">`:`<span style="font-size:13px;color:var(--fg-muted);text-transform:lowercase;letter-spacing:.06em;">image</span>`}</div>`;
+          return `<button onclick="App.selectChoice('${k}')" style="font-family:inherit;cursor:pointer;display:flex;flex-direction:column;gap:10px;padding:10px;border-radius:16px;border:3px solid ${selected?accent:"color-mix(in srgb, var(--insight-black) 16%, transparent)"};background:var(--system-white);transition:border-color .12s,transform .12s;transform:${selected?"translateY(-4px)":"none"};">${thumb}<span style="font-weight:800;font-size:19px;text-align:center;color:var(--insight-black);text-transform:lowercase;">${esc(o.label)}</span></button>`; }).join("");
+        inner=`<div style="flex:1;display:flex;flex-direction:column;justify-content:center;min-height:0;"><div style="${qTitleStyle}">${esc(q.text)}</div><div style="text-align:center;font-size:16px;color:var(--fg-tertiary);margin-bottom:22px;">tap to choose one</div><div style="display:grid;grid-template-columns:${cols};gap:18px;max-width:920px;margin:0 auto;width:100%;overflow:auto;">${cards}</div></div>`;
+      }
+      // confirm bar
+      const showConfirm=(q.type==="likert"||q.type==="multi"||q.type==="image") && (isMS?(Array.isArray(pend)&&pend.length>0):pend!=null);
+      let pendLabel="";
+      if(isMS){ const nn=Array.isArray(pend)?pend.length:0; pendLabel=nn+(nn===1?" choice":" choices"); }
+      else if(pend!=null){ if(q.type==="likert"&&(q.likertMode||"buttons")==="slider"){ const sp=this.sliderSpec(q); pendLabel=pend+" / "+sp.max; } else { const lf=(k)=>{ if(q.type==="likert"){ const sp=(q.scale||[]).find(s=>s.key===k)||{}; return sp.label||k; } const o=(q.options||[]).find(o=>o.key===k)||{}; return o.label||k; }; pendLabel=lf(pend); } }
+      const confirm=showConfirm?`<div style="display:flex;align-items:center;justify-content:center;gap:20px;padding-top:18px;">
+        <div style="font-size:20px;font-weight:300;color:var(--fg-secondary);">your pick: <b style="font-weight:800;color:var(--insight-black);text-transform:lowercase;">${esc(pendLabel)}</b></div>
+        <button onclick="App.clearChoice()" style="font-family:inherit;cursor:pointer;background:none;border:none;color:var(--fg-tertiary);font-size:17px;text-decoration:underline;text-underline-offset:3px;">change</button>
+        <button onclick="App.confirmChoice()" style="font-family:inherit;cursor:pointer;background:${button};color:${onButton};border:none;font-weight:800;font-size:22px;padding:16px 44px;border-radius:999px;display:flex;align-items:center;gap:12px;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"></path></svg>confirm</button>
+      </div>`:"";
+      body=`<div style="flex:1;display:flex;flex-direction:column;min-height:0;"><div style="flex:1;display:flex;flex-direction:column;min-height:0;">${inner}</div>${confirm}</div>`;
+    } else {
+      // reveal
+      const r=this.getReveal(); let rv="";
+      if(r){
+        const suffix = r.isMulti ? "" : (r.smallN?"":"%");
+        const caption = r.isMulti ? "categories you chose" : (r.smallN?"so far \u2014 be one of the first":"chose the same as you");
+        const nextLabel=(this.state.qIndex+1>=survey.questions.length)?"finish":"next";
+        const bars=r.bars.map(b=>{ const labelStyle=`width:150px;text-align:right;font-size:19px;font-weight:${b.isChosen?"800":"400"};text-transform:lowercase;opacity:${b.isChosen?"1":".55"};color:var(--insight-black);`;
+          const pctStyle=`width:82px;font-size:${b.isChosen?"30px":"22px"};font-weight:${b.isChosen?"900":"600"};color:${b.isChosen?accent:"var(--fg-tertiary)"};`;
+          const fillStyle=`position:absolute;left:0;top:0;height:100%;width:${b.pct}%;min-width:${b.pct>0?"8px":"0"};background:${b.isChosen?accent:"color-mix(in srgb, var(--insight-black) 22%, transparent)"};border-radius:6px;transform-origin:left;animation:barGrow .42s var(--ease-out,cubic-bezier(0.16,1,0.3,1)) both;`;
+          const youTag=b.isChosen?`<span style="position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:13px;font-weight:800;letter-spacing:.1em;text-transform:lowercase;color:${onAccent};">you</span>`:"";
+          return `<div style="display:flex;align-items:center;gap:18px;"><div style="${labelStyle}">${esc(b.label)}</div><div style="flex:1;height:40px;background:color-mix(in srgb, var(--insight-black) 7%, transparent);border-radius:6px;position:relative;overflow:hidden;"><div style="${fillStyle}"></div>${youTag}</div><div style="${pctStyle}">${esc(b.pctText)}</div></div>`; }).join("");
+        rv=`<div style="flex:1;display:flex;flex-direction:column;padding-top:28px;min-height:0;animation:revealIn .26s var(--ease-out,cubic-bezier(0.16,1,0.3,1)) both;">
+          <div style="display:flex;align-items:center;gap:10px;"><span style="width:11px;height:11px;border-radius:50%;background:${accent};animation:livePulse 1.6s ease-in-out infinite;"></span><span style="font-size:14px;letter-spacing:.14em;text-transform:lowercase;color:var(--fg-tertiary);font-weight:600;">live at this station</span></div>
+          <div style="display:flex;align-items:flex-end;gap:40px;margin-top:18px;">
+            <div><div style="font-size:15px;letter-spacing:.16em;text-transform:lowercase;color:var(--fg-tertiary);font-weight:600;margin-bottom:4px;">you said</div><div style="font-weight:900;font-size:52px;line-height:1.0;letter-spacing:-.03em;text-transform:lowercase;border-bottom:6px solid ${accent};display:inline-block;padding-bottom:4px;max-width:18ch;">${esc(r.choiceLabel)}</div></div>
+            <div style="margin-left:auto;text-align:right;"><div style="font-weight:900;font-size:80px;line-height:.9;letter-spacing:-.03em;color:${accent};"><span id="rvbig">${this.state.countDisp||0}</span>${suffix}</div><div style="font-size:18px;color:var(--fg-secondary);font-weight:300;">${caption}</div></div>
+          </div>
+          <div style="font-size:16px;color:var(--fg-tertiary);font-weight:300;margin-top:26px;margin-bottom:10px;">${esc(r.q.text)}</div>
+          <div style="display:flex;flex-direction:column;gap:10px;overflow:auto;flex:1;min-height:0;">${bars}</div>
+          <div style="display:flex;align-items:center;gap:24px;margin-top:14px;padding-top:14px;border-top:1px solid color-mix(in srgb, var(--insight-black) 12%, transparent);"><div style="max-width:640px;font-size:13px;line-height:1.4;color:var(--fg-muted);">directional &amp; illustrative \u2014 counts from festival-goers who took part at this booth. not weighted or projectable.</div><button onclick="App.nextFromReveal()" style="margin-left:auto;font-family:inherit;cursor:pointer;background:${button};color:${onButton};border:none;font-weight:800;font-size:26px;padding:20px 60px;border-radius:999px;display:flex;align-items:center;gap:14px;white-space:nowrap;">${nextLabel}<span style="font-size:26px;">\u2192</span></button></div>
         </div>`;
       }
-    } else {
-      const bars=v.revealBars.map((bar,i)=>`
-        <div style="display:flex;align-items:center;gap:18px;">
-          <div style="${styleStr(bar.labelStyle)}">${esc(bar.label)}</div>
-          <div style="flex:1;height:42px;background:color-mix(in srgb, var(--insight-black) 7%, transparent);border-radius:6px;position:relative;overflow:hidden;">
-            <div id="rvfill${i}" style="${styleStr(bar.fillStyle)}"></div>
-            ${bar.isChosen?`<span style="position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:13px;font-weight:800;letter-spacing:.1em;text-transform:lowercase;color:var(--system-white);">you</span>`:''}
-          </div>
-          <div style="${styleStr(bar.pctStyle)}">${esc(bar.pctText)}</div>
-        </div>`).join("");
-      body=`
-      <div onclick="App.nextFromReveal()" style="flex:1;display:flex;flex-direction:column;padding-top:40px;cursor:pointer;">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <span style="width:11px;height:11px;border-radius:50%;background:var(--vector-orange);animation:livePulse 1.6s ease-in-out infinite;"></span>
-          <span style="font-size:14px;letter-spacing:.14em;text-transform:lowercase;color:var(--fg-tertiary);font-weight:600;">live at this station</span></div>
-        <div style="display:flex;align-items:flex-end;gap:40px;margin-top:24px;">
-          <div>
-            <div style="font-size:15px;letter-spacing:.16em;text-transform:lowercase;color:var(--fg-tertiary);font-weight:600;margin-bottom:4px;">you said</div>
-            <div style="font-weight:900;font-size:58px;line-height:1.0;letter-spacing:-.03em;text-transform:lowercase;border-bottom:6px solid var(--vector-orange);display:inline-block;padding-bottom:4px;">${esc(v.revealChoice)}</div></div>
-          <div style="margin-left:auto;text-align:right;">
-            <div style="font-weight:900;font-size:86px;line-height:.9;letter-spacing:-.03em;color:var(--vector-orange);"><span id="rvbig">${v.revealBig}</span>${v.revealSuffix}</div>
-            <div style="font-size:18px;color:var(--fg-secondary);font-weight:300;">${esc(v.revealCaption)}</div></div>
-        </div>
-        <div style="font-size:16px;color:var(--fg-tertiary);font-weight:300;margin-top:38px;margin-bottom:12px;">${esc(v.revealQ)}</div>
-        <div style="display:flex;flex-direction:column;gap:12px;">${bars}</div>
-        <div style="margin-top:auto;padding-top:16px;"><div style="max-width:780px;font-size:13px;line-height:1.4;color:var(--fg-muted);">directional &amp; illustrative — counts from festival-goers who chose to take part at this booth. not weighted or projectable to any population.</div></div>
-      </div>`;
+      body=rv;
     }
-    const prompt = v.revealPrompt ? `
-      <div onclick="App.nextFromReveal()" style="position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(26,43,48,0.2);animation:fadeOverlay 1s ease-in both;">
-        <button onclick="App.nextFromReveal()" style="font-family:inherit;cursor:pointer;background:var(--system-white);color:var(--insight-black);border:none;font-weight:800;font-size:30px;padding:24px 76px;border-radius:999px;box-shadow:0 18px 50px rgba(26,43,48,0.35);display:flex;align-items:center;gap:14px;animation:btnPop 1s ease-in both;">${esc(v.nextLabel)}<span style="font-size:30px;">→</span></button></div>` : "";
-    const dots=v.dots.map(d=>`<span style="${styleStr(d.style)}"></span>`).join("");
     return `
-    <div style="position:absolute;inset:0;background:var(--system-white);display:flex;flex-direction:column;padding:42px 72px 52px;box-sizing:border-box;">
-      <div style="display:flex;align-items:center;gap:18px;">
-        <img src="${LOGOS.iconBlack}" alt="" style="height:26px;" />
-        <div style="display:flex;gap:10px;align-items:center;">${dots}</div>
-        <div style="margin-left:auto;font-size:15px;font-weight:600;color:var(--fg-tertiary);letter-spacing:.02em;">${esc(v.headerLabel)}</div>
-      </div>
-      ${body}
-      ${prompt}
-    </div>`;
+  <div style="position:absolute;inset:0;background:var(--system-white);display:flex;flex-direction:column;padding:42px 72px 52px;box-sizing:border-box;">
+    <div style="display:flex;align-items:center;gap:18px;"><img src="${LOGOS.iconBlack}" alt="" style="height:26px;" /><div style="display:flex;gap:10px;align-items:center;">${dots}</div><div style="margin-left:auto;font-size:15px;font-weight:600;color:var(--fg-tertiary);letter-spacing:.02em;">${headerLabel}</div></div>
+    ${body}
+  </div>`;
   },
 
-  scVideo(){ return `
+  scVideo(v){
+    return `
   <div style="position:absolute;inset:0;background:var(--system-white);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:72px;box-sizing:border-box;text-align:center;">
-    <div style="width:96px;height:96px;border-radius:50%;background:var(--datum-pink);display:flex;align-items:center;justify-content:center;margin-bottom:30px;">
-      <div style="width:36px;height:26px;border-radius:5px;background:var(--insight-black);position:relative;"><div style="position:absolute;right:-13px;top:6px;width:0;height:0;border-top:7px solid transparent;border-bottom:7px solid transparent;border-left:14px solid var(--insight-black);"></div></div></div>
-    <div style="font-size:13px;letter-spacing:.16em;text-transform:lowercase;color:var(--fg-tertiary);font-weight:600;">one more thing — optional</div>
-    <div style="font-weight:900;font-size:58px;line-height:1.02;letter-spacing:-.03em;margin-top:12px;max-width:16ch;">want to tell us more, on camera?</div>
-    <div style="font-size:22px;font-weight:300;color:var(--fg-secondary);margin-top:20px;max-width:36ch;line-height:1.4;">record a quick clip right here at the booth — about the music, the food, your day. 18+, and you can stop anytime.</div>
+    <div style="width:96px;height:96px;border-radius:50%;background:var(--datum-pink);display:flex;align-items:center;justify-content:center;margin-bottom:30px;"><div style="width:36px;height:26px;border-radius:5px;background:var(--insight-black);position:relative;"><div style="position:absolute;right:-13px;top:6px;width:0;height:0;border-top:7px solid transparent;border-bottom:7px solid transparent;border-left:14px solid var(--insight-black);"></div></div></div>
+    <div style="font-size:13px;letter-spacing:.16em;text-transform:lowercase;color:var(--fg-tertiary);font-weight:600;">${esc(v.tx.videoEyebrow)}</div>
+    <div style="font-weight:900;font-size:58px;line-height:1.02;letter-spacing:-.03em;margin-top:12px;max-width:16ch;">${esc(v.tx.videoTitle)}</div>
+    <div style="font-size:22px;font-weight:300;color:var(--fg-secondary);margin-top:20px;max-width:36ch;line-height:1.4;">${esc(v.tx.videoBody)}</div>
     <div style="display:flex;gap:26px;margin-top:46px;">
-      <button onclick="App.videoNo()" style="font-family:inherit;cursor:pointer;background:var(--system-white);border:3px solid var(--insight-black);color:var(--insight-black);font-weight:800;font-size:24px;padding:20px 54px;border-radius:999px;min-width:220px;">no thanks</button>
-      <button onclick="App.videoYes()" style="font-family:inherit;cursor:pointer;background:var(--insight-black);border:3px solid var(--insight-black);color:var(--system-white);font-weight:800;font-size:24px;padding:20px 54px;border-radius:999px;min-width:220px;">yes, i'm in</button></div>
-  </div>`; },
+      <button onclick="App.videoNo()" style="font-family:inherit;cursor:pointer;background:var(--system-white);border:3px solid var(--insight-black);color:var(--insight-black);font-weight:800;font-size:24px;padding:20px 54px;border-radius:999px;min-width:220px;">${esc(v.tx.videoNo)}</button>
+      <button onclick="App.videoYes()" style="font-family:inherit;cursor:pointer;background:${v.button};border:3px solid ${v.button};color:${v.onButton};font-weight:800;font-size:24px;padding:20px 54px;border-radius:999px;min-width:220px;">${esc(v.tx.videoYes)}</button>
+    </div>
+  </div>`;
+  },
 
   scCapture(v){
-    const ring = v.recording ? `<svg width="104" height="104" viewBox="0 0 104 104" style="position:absolute;inset:0;transform:rotate(-90deg);pointer-events:none;">
-        <circle cx="52" cy="52" r="48" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="5"></circle>
-        <circle id="recRingFg" cx="52" cy="52" r="48" fill="none" stroke="var(--index-red)" stroke-width="5" stroke-linecap="round" stroke-dasharray="${v.ringCirc}" stroke-dashoffset="${v.ringCirc}"></circle></svg>` : "";
+    const m=Math.floor(v.recSec/60), s=v.recSec%60; const clock="rec "+m+":"+(s<10?"0":"")+s+" / 1:00";
+    const status = v.recording ? `<span style="width:13px;height:13px;border-radius:50%;background:var(--index-red);animation:recPulse 1s ease-in-out infinite;"></span><span id="recClock" style="font-weight:700;font-size:20px;letter-spacing:.04em;font-variant-numeric:tabular-nums;">${clock}</span>` : `<span style="font-size:15px;opacity:.55;">up to 60 seconds</span>`;
+    const denied = v.camDenied?`<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#06090a;color:var(--system-white);text-align:center;gap:14px;"><div style="width:74px;height:54px;border-radius:8px;border:3px solid color-mix(in srgb, var(--system-white) 45%, transparent);position:relative;"><div style="position:absolute;right:-18px;top:12px;width:0;height:0;border-top:9px solid transparent;border-bottom:9px solid transparent;border-left:18px solid color-mix(in srgb, var(--system-white) 45%, transparent);"></div></div><div style="font-weight:700;font-size:20px;">camera preview</div><div style="font-size:14px;opacity:.55;max-width:30ch;line-height:1.4;">live feed from the booth camera appears here. (running in demo mode \u2014 record still works.)</div></div>`:"";
+    const recBtn=`width:84px;height:84px;border-radius:50%;border:5px solid var(--system-white);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;touch-action:none;`;
+    const recDot = v.recording?`width:30px;height:30px;border-radius:6px;background:var(--index-red);display:block;`:`width:56px;height:56px;border-radius:50%;background:var(--index-red);display:block;`;
+    const hint = v.recording?"tap to stop":"tap to start recording";
     return `
-    <div style="position:absolute;inset:0;background:var(--insight-black);color:var(--system-white);display:flex;flex-direction:column;align-items:center;padding:40px 56px;box-sizing:border-box;">
-      <div style="width:100%;display:flex;align-items:center;gap:14px;">
-        <span style="font-size:13px;letter-spacing:.16em;text-transform:lowercase;opacity:.6;font-weight:600;">record your story</span>
-        <div style="margin-left:auto;display:flex;align-items:center;gap:10px;">
-          ${v.recording?`<span style="width:13px;height:13px;border-radius:50%;background:var(--index-red);animation:recPulse 1s ease-in-out infinite;"></span><span style="font-weight:700;font-size:20px;letter-spacing:.04em;font-variant-numeric:tabular-nums;">rec <span id="recClock">${v.recClock}</span></span>`:`<span style="font-size:15px;opacity:.55;">up to 30 seconds</span>`}
-        </div>
-      </div>
-      <div style="flex:1;width:100%;display:flex;align-items:center;justify-content:center;position:relative;margin:18px 0;">
-        <div style="position:relative;width:768px;height:432px;border-radius:14px;overflow:hidden;background:#06090a;border:2px solid color-mix(in srgb, var(--system-white) 14%, transparent);">
-          <video id="camVideo" autoplay muted playsinline style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);background:#06090a;"></video>
-          ${v.camDenied?`<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#06090a;color:var(--system-white);text-align:center;gap:14px;">
-            <div style="width:74px;height:54px;border-radius:8px;border:3px solid color-mix(in srgb, var(--system-white) 45%, transparent);position:relative;"><div style="position:absolute;right:-18px;top:12px;width:0;height:0;border-top:9px solid transparent;border-bottom:9px solid transparent;border-left:18px solid color-mix(in srgb, var(--system-white) 45%, transparent);"></div></div>
-            <div style="font-weight:700;font-size:20px;">camera preview</div>
-            <div style="font-size:14px;opacity:.55;max-width:30ch;line-height:1.4;">live feed from the booth camera appears here. (running in demo mode — record still works.)</div></div>`:''}
-          <div style="position:absolute;left:16px;bottom:14px;display:flex;align-items:center;gap:8px;background:rgba(6,9,10,.6);padding:7px 12px;border-radius:999px;">
-            <span style="width:9px;height:9px;border-radius:50%;background:var(--metric-blue);"></span><span style="font-size:12px;letter-spacing:.04em;">booth camera &amp; mic</span></div>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:36px;">
-        <button onclick="App.cancelCapture()" style="font-family:inherit;cursor:pointer;background:none;border:none;color:var(--system-white);opacity:.65;font-size:18px;text-decoration:underline;text-underline-offset:3px;">skip</button>
-        <div style="position:relative;width:104px;height:104px;display:flex;align-items:center;justify-content:center;">
-          ${ring}
-          <button onclick="App.startRecord()" onpointerdown="App.beginStopHold()" onpointerup="App.endStopHold()" onpointerleave="App.endStopHold()" onpointercancel="App.endStopHold()" style="${styleStr(v.recBtnStyle)}"><span style="${styleStr(v.recDotStyle)}"></span></button>
-        </div>
-        <div style="width:64px;"></div>
-      </div>
-      <div style="font-size:16px;font-weight:600;margin-top:14px;">${esc(v.recHint)}</div>
-      <div style="max-width:760px;text-align:center;font-size:12.5px;line-height:1.45;opacity:.5;margin-top:10px;">by recording you consent to Insightrix using this clip; footage is stored securely in Canada, linked to your anonymous answers only, with a defined retention period. a team member can answer any questions.</div>
-    </div>`;
+  <div style="position:absolute;inset:0;background:var(--insight-black);color:var(--system-white);display:flex;flex-direction:column;align-items:center;padding:40px 56px;box-sizing:border-box;">
+    <div style="width:100%;display:flex;align-items:center;gap:14px;"><span style="font-size:13px;letter-spacing:.16em;text-transform:lowercase;opacity:.6;font-weight:600;">record your story</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px;">${status}</div></div>
+    <div style="flex:1;width:100%;display:flex;align-items:center;justify-content:center;position:relative;margin:18px 0;"><div style="position:relative;width:768px;height:432px;border-radius:14px;overflow:hidden;background:#06090a;border:2px solid color-mix(in srgb, var(--system-white) 14%, transparent);"><video id="camVideo" autoplay muted playsinline style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);background:#06090a;"></video>${denied}<div style="position:absolute;left:16px;bottom:14px;display:flex;align-items:center;gap:8px;background:rgba(6,9,10,.6);padding:7px 12px;border-radius:999px;"><span style="width:9px;height:9px;border-radius:50%;background:var(--metric-blue);"></span><span style="font-size:12px;letter-spacing:.04em;">booth camera &amp; mic</span></div></div></div>
+    <div style="display:flex;align-items:center;gap:36px;"><button onclick="App.cancelCapture()" style="font-family:inherit;cursor:pointer;background:none;border:none;color:var(--system-white);opacity:.65;font-size:18px;text-decoration:underline;text-underline-offset:3px;">skip</button><button onclick="App.toggleRecord()" style="${recBtn}"><span style="${recDot}"></span></button><div style="width:64px;"></div></div>
+    <div style="font-size:16px;font-weight:600;margin-top:14px;">${hint}</div>
+    <div style="max-width:760px;text-align:center;font-size:12.5px;line-height:1.45;opacity:.5;margin-top:10px;">by recording you consent to Insightrix using this clip; footage is stored securely in Canada, linked to your anonymous answers only, with a defined retention period. a team member can answer any questions.</div>
+  </div>`;
   },
 
-  scReview(v){ return `
+  scReview(v){
+    return `
   <div style="position:absolute;inset:0;background:var(--insight-black);color:var(--system-white);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:72px;box-sizing:border-box;text-align:center;overflow:hidden;">
     <div style="position:absolute;width:200px;height:100px;border-radius:200px 200px 0 0;background:var(--metric-blue);opacity:.16;top:90px;left:160px;animation:floaty 8s ease-in-out infinite;"></div>
-    <div style="width:104px;height:104px;border-radius:50%;background:var(--anchor-green);display:flex;align-items:center;justify-content:center;margin-bottom:26px;position:relative;animation:popIn .5s cubic-bezier(0.16,1,0.3,1) both;">
-      <svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="#1a2b30" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"></path></svg></div>
+    <div style="width:104px;height:104px;border-radius:50%;background:var(--anchor-green);display:flex;align-items:center;justify-content:center;margin-bottom:26px;position:relative;animation:popIn .5s cubic-bezier(0.16,1,0.3,1) both;"><svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="#1a2b30" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"></path></svg></div>
     <div style="font-size:13px;letter-spacing:.16em;text-transform:lowercase;opacity:.55;font-weight:600;position:relative;">got it</div>
     <div style="font-weight:900;font-size:56px;letter-spacing:-.025em;margin-top:10px;position:relative;">thanks for your story.</div>
     <div style="font-size:21px;font-weight:300;opacity:.78;margin-top:14px;max-width:36ch;line-height:1.4;position:relative;">your ${esc(v.reviewLen)} clip is saved securely and linked to your answers anonymously.</div>
-    <div style="display:flex;gap:22px;margin-top:42px;position:relative;">
-      <button onclick="App.recordAgain()" style="font-family:inherit;cursor:pointer;background:none;border:2px solid color-mix(in srgb, var(--system-white) 45%, transparent);color:var(--system-white);font-weight:700;font-size:20px;padding:16px 40px;border-radius:999px;">record again</button>
-      <button onclick="App.reviewDone()" style="font-family:inherit;cursor:pointer;background:var(--system-white);color:var(--insight-black);border:none;font-weight:800;font-size:22px;padding:16px 52px;border-radius:999px;">all done</button></div>
-  </div>`; },
-
-  scRecruit(){
-    const digits=this.state.recruitPhone||"";
-    const display = digits ? this.formatPhone(digits) : "(___) ___-____";
-    const phoneColor = digits ? "var(--insight-black)" : "var(--fg-muted)";
-    const valid = digits.length===10, sending=this.state.recruitSending;
-    const sendLabel = sending ? "sending\u2026" : "text me the link";
-    const sendBtn = "margin-top:14px;font-family:inherit;cursor:"+((valid&&!sending)?"pointer":"default")+";width:100%;border:none;border-radius:999px;padding:16px;font-weight:800;font-size:19px;background:"+(valid?"var(--insight-black)":"color-mix(in srgb, var(--insight-black) 22%, var(--system-white))")+";color:"+(valid?"var(--system-white)":"var(--fg-muted)")+";";
-    const keyStyle = (k)=>"font-family:inherit;font-size:"+((k==="clr"||k==="del")?"15px":"24px")+";font-weight:700;background:var(--system-white);border:2px solid color-mix(in srgb, var(--insight-black) 16%, transparent);border-radius:12px;color:var(--insight-black);cursor:pointer;height:54px;display:flex;align-items:center;justify-content:center;text-transform:lowercase;";
-    const pad = ["1","2","3","4","5","6","7","8","9","clr","0","del"].map(k=>`<button onclick="App.phonePress('${k}')" style="${keyStyle(k)}">${k==="del"?"\u232b":k}</button>`).join("");
-    const right = this.state.recruitSent ? `
-      <div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:16px;">
-        <div style="width:92px;height:92px;border-radius:50%;background:var(--anchor-green);display:flex;align-items:center;justify-content:center;"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#1a2b30" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"></path></svg></div>
-        <div style="font-weight:800;font-size:30px;letter-spacing:-.02em;">link sent</div>
-        <div style="font-size:18px;color:var(--fg-secondary);line-height:1.4;">check your phone for a text from SaskWatch and tap the link to finish signing up.</div>
-        <div style="font-size:13px;color:var(--fg-muted);">sent to ${esc(display)}</div>
-      </div>` : `
-      <div style="font-weight:800;font-size:25px;letter-spacing:-.01em;margin-bottom:4px;">text me the link</div>
-      <div style="font-size:15px;color:var(--fg-tertiary);margin-bottom:18px;">we'll send a one-time sign-up link to your phone.</div>
-      <div style="font-size:12px;font-weight:700;text-transform:lowercase;letter-spacing:.06em;color:var(--fg-tertiary);margin-bottom:6px;">mobile number</div>
-      <div style="height:58px;border:2px solid var(--insight-black);border-radius:12px;display:flex;align-items:center;padding:0 18px;font-size:25px;font-weight:700;margin-bottom:14px;color:${phoneColor};">${esc(display)}</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px;">${pad}</div>
-      <button onclick="App.sendLink()" style="${sendBtn}">${sendLabel}</button>
-      <div style="font-size:11px;line-height:1.45;color:var(--fg-muted);margin-top:12px;">by providing your number you consent to receive a one-time SMS with the SaskWatch sign-up link from Insightrix. msg &amp; data rates may apply; reply STOP to opt out. your number is sent securely to SaskWatch and isn't stored on this device.</div>`;
-    return `
-    <div style="position:absolute;inset:0;background:var(--measured-purple);color:var(--system-white);display:flex;align-items:stretch;overflow:hidden;">
-      <div style="position:absolute;width:300px;height:300px;border-radius:50%;background:var(--purple-axis);opacity:.18;bottom:-120px;left:-80px;"></div>
-      <div style="flex:1;padding:64px;display:flex;flex-direction:column;justify-content:center;position:relative;box-sizing:border-box;">
-        <img src="${LOGOS.swWhite}" alt="SaskWatch" style="height:38px;align-self:flex-start;margin-bottom:20px;" />
-        <div style="font-size:13px;letter-spacing:.16em;text-transform:lowercase;opacity:.6;font-weight:600;">last thing — you're already done</div>
-        <div style="font-weight:900;font-size:60px;line-height:1.0;letter-spacing:-.03em;margin-top:12px;max-width:13ch;">want your say to count all year?</div>
-        <div style="font-size:22px;font-weight:300;line-height:1.4;margin-top:22px;max-width:32ch;opacity:.92;">Saskatchewan's research panel — real questions between festivals, real rewards, your voice in the mix.</div>
-        <div style="display:flex;align-items:center;gap:24px;margin-top:40px;">
-          <button onclick="App.recruitDone()" style="font-family:inherit;cursor:pointer;background:var(--signal-yellow);color:var(--insight-black);border:none;font-weight:800;font-size:24px;padding:20px 52px;border-radius:999px;">finish</button>
-          <span style="font-size:16px;opacity:.7;">no pressure — it's a one-time text.</span></div>
-      </div>
-      <div style="width:496px;background:var(--system-white);color:var(--insight-black);display:flex;flex-direction:column;justify-content:center;padding:38px 44px;box-sizing:border-box;position:relative;">${right}</div>
-    </div>`;
+    <div style="display:flex;gap:22px;margin-top:42px;position:relative;"><button onclick="App.recordAgain()" style="font-family:inherit;cursor:pointer;background:none;border:2px solid color-mix(in srgb, var(--system-white) 45%, transparent);color:var(--system-white);font-weight:700;font-size:20px;padding:16px 40px;border-radius:999px;">redo video</button><button onclick="App.reviewDone()" style="font-family:inherit;cursor:pointer;background:var(--system-white);color:var(--insight-black);border:none;font-weight:800;font-size:22px;padding:16px 52px;border-radius:999px;">all done</button></div>
+  </div>`;
   },
 
-  scThanks(v){ const conf=v.confetti.map(c=>`<span style="${styleStr(c.style)}"></span>`).join("");
+  scRecruit(v){
+    const digits=this.state.recruitPhone||""; const valid=digits.length===10;
+    const phoneDisp=digits?this.formatPhone(digits):"(___) ___-____"; const phoneColor=digits?"var(--insight-black)":"var(--fg-muted)";
+    const sendLabel=this.state.recruitSending?"sending\u2026":"text me the link";
+    const sendBtn=`margin-top:14px;font-family:inherit;cursor:${(valid&&!this.state.recruitSending)?"pointer":"default"};width:100%;border:none;border-radius:999px;padding:16px;font-weight:800;font-size:19px;background:${valid?v.button:"color-mix(in srgb, var(--insight-black) 22%, var(--system-white))"};color:${valid?v.onButton:"var(--fg-muted)"};`;
+    const pad=["1","2","3","4","5","6","7","8","9","clr","0","del"].map(k=>`<button onclick="App.phonePress('${k}')" style="font-family:inherit;font-size:${(k==="clr"||k==="del")?"15px":"24px"};font-weight:700;background:var(--system-white);border:2px solid color-mix(in srgb, var(--insight-black) 16%, transparent);border-radius:12px;color:var(--insight-black);cursor:pointer;height:54px;display:flex;align-items:center;justify-content:center;text-transform:lowercase;">${k==="del"?"\u232b":k}</button>`).join("");
+    const logoChip = v.hasLogo?`<div style="align-self:flex-start;background:var(--system-white);border-radius:10px;padding:10px 16px;margin-bottom:20px;">${this.logoImg(v.logo,"height:34px;max-width:240px;object-fit:contain;display:block;")}</div>`:"";
+    const panel = this.state.recruitSent
+      ? `<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:16px;"><div style="width:92px;height:92px;border-radius:50%;background:var(--anchor-green);display:flex;align-items:center;justify-content:center;"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#1a2b30" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"></path></svg></div><div style="font-weight:800;font-size:30px;letter-spacing:-.02em;">link sent</div><div style="font-size:18px;color:var(--fg-secondary);line-height:1.4;">check your phone for the text and tap the link to finish signing up.</div><div style="font-size:13px;color:var(--fg-muted);">sent to ${esc(phoneDisp)} \u00b7 wrapping up\u2026</div></div>`
+      : `<div style="font-weight:800;font-size:25px;letter-spacing:-.01em;margin-bottom:4px;">${esc(v.tx.recruitPanelTitle)}</div><div style="font-size:15px;color:var(--fg-tertiary);margin-bottom:18px;">${esc(v.tx.recruitPanelSub)}</div><div style="font-size:12px;font-weight:700;text-transform:lowercase;letter-spacing:.06em;color:var(--fg-tertiary);margin-bottom:6px;">mobile number</div><div style="height:58px;border:2px solid var(--insight-black);border-radius:12px;display:flex;align-items:center;padding:0 18px;font-size:25px;font-weight:700;margin-bottom:14px;color:${phoneColor};">${esc(phoneDisp)}</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px;">${pad}</div><button onclick="App.sendLink()" style="${sendBtn}">${esc(sendLabel)}</button><div style="font-size:11px;line-height:1.45;color:var(--fg-muted);margin-top:12px;">by providing your number you consent to receive a one-time SMS with the sign-up link from Insightrix. msg &amp; data rates may apply; reply STOP to opt out. your number is sent securely and isn't stored on this device.</div>`;
     return `
-    <div onclick="App.restart()" style="position:absolute;inset:0;background:var(--anchor-green);color:var(--insight-black);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:72px;box-sizing:border-box;text-align:center;cursor:pointer;overflow:hidden;">
-      ${conf}
-      <img src="${LOGOS.iconBlack}" alt="" style="height:54px;margin-bottom:28px;position:relative;" />
-      <div style="font-weight:900;font-size:78px;line-height:1.0;letter-spacing:-.03em;position:relative;text-wrap:balance;max-width:16ch;">thanks for having your say.</div>
-      <div style="font-size:25px;font-weight:300;margin-top:22px;position:relative;max-width:30ch;line-height:1.4;">you're entered in the festival draw. enjoy the rest of the Exchange.</div>
-      <div style="font-style:italic;font-size:18px;opacity:.6;margin-top:40px;position:relative;">the art of research™</div>
-      <div style="position:absolute;bottom:54px;font-size:15px;opacity:.6;">tap anywhere to start over</div>
-      <div style="position:absolute;bottom:0;left:0;height:6px;width:100%;background:var(--insight-black);transform-origin:left;animation:shrinkBar 14s linear forwards;"></div>
-    </div>`; },
-
-  scLock(v){
-    const dots=v.passDots.map(d=>`<span style="${styleStr(d.style)}"></span>`).join("");
-    const keys=v.padKeys.map(pk=>`<button onclick="App.pressPad('${pk.k}')" style="${styleStr(pk.style)}">${pk.label}</button>`).join("");
-    return `
-    <div style="position:absolute;inset:0;background:var(--insight-black);color:var(--system-white);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--system-white)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
-        <span style="font-size:14px;letter-spacing:.16em;text-transform:lowercase;opacity:.6;font-weight:600;">staff access</span></div>
-      <div style="font-weight:900;font-size:38px;letter-spacing:-.02em;margin-bottom:24px;">enter passcode</div>
-      <div style="display:flex;gap:16px;margin-bottom:14px;">${dots}</div>
-      ${v.passErr?`<div style="color:var(--datum-pink);font-weight:700;font-size:15px;margin-bottom:8px;">wrong passcode — try again</div>`:''}
-      <div style="display:grid;grid-template-columns:repeat(3,82px);gap:14px;margin-top:12px;">${keys}</div>
-      <button onclick="App.exitAdmin()" style="margin-top:28px;font-family:inherit;cursor:pointer;background:none;border:none;color:var(--system-white);opacity:.55;font-size:16px;text-decoration:underline;text-underline-offset:3px;">back to kiosk</button>
-      <div style="position:absolute;bottom:20px;font-size:12px;opacity:.4;">demo passcode: 2026</div>
-    </div>`;
+  <div style="position:absolute;inset:0;background:${v.primary};color:${v.onPrimary};display:flex;align-items:stretch;overflow:hidden;">
+    <div style="position:absolute;width:300px;height:300px;border-radius:50%;background:currentColor;opacity:.1;bottom:-120px;left:-80px;"></div>
+    <div style="flex:1;padding:64px;display:flex;flex-direction:column;justify-content:center;position:relative;box-sizing:border-box;">${logoChip}<div style="font-size:13px;letter-spacing:.16em;text-transform:lowercase;opacity:.6;font-weight:600;">${esc(v.tx.recruitEyebrow)}</div><div style="font-weight:900;font-size:60px;line-height:1.0;letter-spacing:-.03em;margin-top:12px;max-width:13ch;">${esc(v.tx.recruitTitle)}</div><div style="font-size:22px;font-weight:300;line-height:1.4;margin-top:22px;max-width:32ch;opacity:.92;">${esc(v.tx.recruitBody)}</div><div style="display:flex;align-items:center;gap:24px;margin-top:40px;"><button onclick="App.recruitDone()" style="font-family:inherit;cursor:pointer;background:${v.accent};color:${v.onAccent};border:none;font-weight:800;font-size:24px;padding:20px 52px;border-radius:999px;">${esc(v.tx.recruitCta)}</button><span style="font-size:16px;opacity:.7;">no pressure \u2014 it's a one-time text.</span></div></div>
+    <div style="width:496px;background:var(--system-white);color:var(--insight-black);display:flex;flex-direction:column;justify-content:center;padding:38px 44px;box-sizing:border-box;position:relative;">${panel}</div>
+  </div>`;
   },
+
+  scThanks(v){
+    const cols=["var(--vector-orange)","var(--metric-blue)","var(--signal-yellow)","var(--datum-pink)","var(--purple-axis)","var(--measured-purple)"];
+    const conf=Array.from({length:14}).map((_,i)=>{ const left=(i*8.3+(i%3)*4)%100; const sq=i%2===0; return `<span style="position:absolute;top:-30px;left:${left}%;width:${sq?"16px":"14px"};height:${sq?"16px":"14px"};border-radius:${sq?"3px":"50%"};background:${cols[i%cols.length]};animation:confettiFall ${4+(i%4)*0.8}s linear ${i*0.4}s infinite;"></span>`; }).join("");
+    return `
+  <div onclick="App.restart()" style="position:absolute;inset:0;background:var(--anchor-green);color:var(--insight-black);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:72px;box-sizing:border-box;text-align:center;cursor:pointer;overflow:hidden;">
+    ${conf}
+    <img src="${LOGOS.iconBlack}" alt="" style="height:54px;margin-bottom:28px;position:relative;" />
+    <div style="font-weight:900;font-size:78px;line-height:1.0;letter-spacing:-.03em;position:relative;text-wrap:balance;max-width:16ch;">${esc(v.tx.thanksTitle)}</div>
+    <div style="font-size:25px;font-weight:300;margin-top:22px;position:relative;max-width:30ch;line-height:1.4;">${esc(v.tx.thanksBody)}</div>
+    <div style="font-style:italic;font-size:18px;opacity:.6;margin-top:40px;position:relative;">the art of research\u2122</div>
+    <div style="position:absolute;bottom:54px;font-size:15px;opacity:.6;">tap anywhere to start over</div>
+    <div style="position:absolute;bottom:0;left:0;height:6px;width:100%;background:var(--insight-black);transform-origin:left;animation:shrinkBar 14s linear forwards;"></div>
+  </div>`;
+  },
+
+  scLock(){
+    const dots=[0,1,2,3].map(i=>`<span style="width:20px;height:20px;border-radius:50%;background:${(this.state.passEntry.length>i)?"var(--system-white)":"transparent"};border:2px solid var(--system-white);display:inline-block;"></span>`).join("");
+    const pad=["1","2","3","4","5","6","7","8","9","clr","0","del"].map(k=>`<button onclick="App.pressPad('${k}')" style="font-family:inherit;font-size:${(k==="clr"||k==="del")?"17px":"30px"};font-weight:700;background:var(--system-white);border:2px solid color-mix(in srgb, var(--insight-black) 16%, transparent);border-radius:14px;color:var(--insight-black);cursor:pointer;height:72px;display:flex;align-items:center;justify-content:center;text-transform:lowercase;">${k==="del"?"\u232b":k}</button>`).join("");
+    const err=this.state.passErr?`<div style="color:var(--datum-pink);font-weight:700;font-size:15px;margin-bottom:8px;">wrong passcode \u2014 try again</div>`:"";
+    return `
+  <div style="position:absolute;inset:0;background:var(--insight-black);color:var(--system-white);display:flex;flex-direction:column;align-items:center;justify-content:center;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--system-white)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg><span style="font-size:14px;letter-spacing:.16em;text-transform:lowercase;opacity:.6;font-weight:600;">staff access</span></div>
+    <div style="font-weight:900;font-size:38px;letter-spacing:-.02em;margin-bottom:24px;">enter passcode</div>
+    <div style="display:flex;gap:16px;margin-bottom:14px;">${dots}</div>${err}
+    <div style="display:grid;grid-template-columns:repeat(3,82px);gap:14px;margin-top:12px;">${pad}</div>
+    <button onclick="App.exitAdmin()" style="margin-top:28px;font-family:inherit;cursor:pointer;background:none;border:none;color:var(--system-white);opacity:.55;font-size:16px;text-decoration:underline;text-underline-offset:3px;">back to kiosk</button>
+    <div style="position:absolute;bottom:20px;font-size:12px;opacity:.4;">demo passcode: 2026</div>
+  </div>`;
+  },
+
+  /* editor helpers */
+  setType(t){ this.setDraft({type:t}); },
+  setSliderLabel(side,val){ const d=this.state.draft; this.setDraft({sliderLabels:Object.assign({}, d.sliderLabels||{}, {[side]:val})}); },
+  minNUp(){ const d=this.state.draft; this.setDraft({minN:Math.min(50,(d.minN!=null?d.minN:5)+1)}); },
+  minNDown(){ const d=this.state.draft; this.setDraft({minN:Math.max(0,(d.minN!=null?d.minN:5)-1)}); },
 
   scAdmin(v){
-    const card=(l,val,big)=>`<div style="background:var(--system-white);border:1px solid color-mix(in srgb, var(--insight-black) 14%, transparent);border-radius:12px;padding:16px 20px;"><div style="font-size:13px;color:var(--fg-tertiary);text-transform:lowercase;">${l}</div><div style="font-weight:900;font-size:${big};letter-spacing:-.02em;line-height:1.2;">${val}</div></div>`;
-    const rows=v.adminQuestions.map(aq=>{const i=aq.num-1;return `
-      <div style="display:flex;align-items:center;gap:14px;background:var(--system-white);border:1px solid color-mix(in srgb, var(--insight-black) 14%, transparent);border-radius:10px;padding:13px 16px;">
-        <div style="font-weight:800;font-size:17px;width:22px;color:var(--fg-tertiary);flex:none;">${aq.num}</div>
-        <span style="${styleStr(aq.badgeStyle)}">${aq.typeLabel}</span>
-        <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(aq.text)}</div><div style="font-size:13px;color:var(--fg-tertiary);">${esc(aq.meta)}</div></div>
-        <button onclick="App.moveQuestion(${i},-1)" style="font-family:inherit;cursor:pointer;width:36px;height:36px;border-radius:8px;border:1.5px solid color-mix(in srgb, var(--insight-black) 22%, transparent);background:var(--system-white);color:var(--insight-black);font-size:17px;font-weight:700;flex:none;">↑</button>
-        <button onclick="App.moveQuestion(${i},1)" style="font-family:inherit;cursor:pointer;width:36px;height:36px;border-radius:8px;border:1.5px solid color-mix(in srgb, var(--insight-black) 22%, transparent);background:var(--system-white);color:var(--insight-black);font-size:17px;font-weight:700;flex:none;">↓</button>
+    const survey=v.survey;
+    const tabs=this.state.surveys.map(svy=>{ const on=svy.id===survey.id; return `<button onclick="App.pickSurvey('${svy.id}')" style="font-family:inherit;cursor:pointer;font-weight:700;font-size:14px;padding:8px 16px;border-radius:999px;border:2px solid ${on?"var(--insight-black)":"color-mix(in srgb, var(--insight-black) 18%, transparent)"};background:${on?"var(--insight-black)":"var(--system-white)"};color:${on?"var(--system-white)":"var(--insight-black)"};">${esc(svy.name)}</button>`; }).join("");
+    const delBtn=this.state.surveys.length>1?`<button onclick="App.delSurvey()" style="font-family:inherit;cursor:pointer;background:none;border:none;color:var(--index-red);font-weight:700;font-size:13px;">delete</button>`:"";
+    const typeLabels={swipe:"swipe", likert:"likert", multi:"multi", image:"image"};
+    const typeHex={swipe:"#452b63", likert:"#9ecfd9", multi:"#5f9c7b", image:"#d97340"};
+    const typeVar={swipe:"var(--measured-purple)", likert:"var(--metric-blue)", multi:"var(--anchor-green)", image:"var(--vector-orange)"};
+    const qrows=survey.questions.map((qq,i)=>{
+      let meta;
+      if(qq.type==="likert" && qq.likertMode==="slider") meta="slider "+(qq.sliderRange||"1-5")+" \u00b7 min n "+(qq.minN!=null?qq.minN:5);
+      else if(qq.type==="likert") meta=(qq.scale?qq.scale.length:0)+"-point \u00b7 min n "+(qq.minN!=null?qq.minN:5);
+      else if(qq.type==="swipe") meta=(((qq.no&&qq.no.label)||"no"))+" / "+(((qq.yes&&qq.yes.label)||"yes"))+" \u00b7 min n "+(qq.minN!=null?qq.minN:5);
+      else meta=(qq.options?qq.options.length:0)+" choices \u00b7 min n "+(qq.minN!=null?qq.minN:5);
+      if(qq.type==="multi" && qq.multiSelect) meta="select-all \u00b7 "+meta;
+      if(qq.cond&&qq.cond.qId) meta+=" \u00b7 conditional";
+      const tv=typeVar[qq.type]||"var(--insight-black)"; const tc=this.contrast(typeHex[qq.type]||"#1a2b30");
+      return `<div style="display:flex;align-items:center;gap:14px;background:var(--system-white);border:1px solid color-mix(in srgb, var(--insight-black) 14%, transparent);border-radius:10px;padding:13px 16px;">
+        <div style="font-weight:800;font-size:17px;width:22px;color:var(--fg-tertiary);flex:none;">${i+1}</div>
+        <span style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:lowercase;padding:5px 11px;border-radius:999px;flex:none;color:${tc};background:${tv};">${typeLabels[qq.type]||qq.type}</span>
+        <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(qq.text)}</div><div style="font-size:13px;color:var(--fg-tertiary);">${esc(meta)}</div></div>
+        <button onclick="App.moveQuestion(${i},-1)" style="font-family:inherit;cursor:pointer;width:36px;height:36px;border-radius:8px;border:1.5px solid color-mix(in srgb, var(--insight-black) 22%, transparent);background:var(--system-white);color:var(--insight-black);font-size:17px;font-weight:700;flex:none;">\u2191</button>
+        <button onclick="App.moveQuestion(${i},1)" style="font-family:inherit;cursor:pointer;width:36px;height:36px;border-radius:8px;border:1.5px solid color-mix(in srgb, var(--insight-black) 22%, transparent);background:var(--system-white);color:var(--insight-black);font-size:17px;font-weight:700;flex:none;">\u2193</button>
         <button onclick="App.dupQuestion(${i})" style="font-family:inherit;cursor:pointer;background:none;border:none;color:var(--fg-tertiary);font-size:14px;text-decoration:underline;text-underline-offset:3px;flex:none;">duplicate</button>
         <button onclick="App.editQuestion(${i})" style="font-family:inherit;cursor:pointer;background:var(--insight-black);color:var(--system-white);border:none;font-weight:700;font-size:15px;padding:9px 20px;border-radius:999px;flex:none;">edit</button>
         <button onclick="App.deleteQuestion(${i})" style="font-family:inherit;cursor:pointer;background:none;border:none;color:var(--index-red);font-weight:700;font-size:14px;flex:none;">delete</button>
-      </div>`;}).join("");
+      </div>`; }).join("");
     return `
-    <div style="position:absolute;inset:0;background:var(--bg-subtle,#f1efe9);color:var(--insight-black);display:flex;flex-direction:column;padding:36px 52px;box-sizing:border-box;overflow:hidden;">
-      <div style="display:flex;align-items:center;gap:16px;">
-        <img src="${LOGOS.iconBlack}" alt="" style="height:30px;" />
-        <div><div style="font-weight:800;font-size:27px;letter-spacing:-.02em;line-height:1;">questionnaire admin</div><div style="font-size:13px;color:var(--fg-tertiary);">exchange folk festival · staffed prototype</div></div>
-        <span style="margin-left:12px;font-size:12px;font-weight:700;background:var(--insight-black);color:var(--system-white);padding:5px 12px;border-radius:999px;">config v${v.configVersion}</span>
-        <button onclick="App.exitAdmin()" style="margin-left:auto;font-family:inherit;cursor:pointer;background:var(--insight-black);color:var(--system-white);border:none;font-weight:700;font-size:16px;padding:12px 26px;border-radius:999px;">exit to kiosk →</button>
+  <div style="position:absolute;inset:0;background:var(--bg-subtle);color:var(--insight-black);display:flex;flex-direction:column;padding:30px 44px;box-sizing:border-box;overflow:hidden;">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <img src="${LOGOS.iconBlack}" alt="" style="height:28px;" />
+      <div><div style="font-weight:800;font-size:24px;letter-spacing:-.02em;line-height:1;">questionnaire admin</div><div style="font-size:12px;color:var(--fg-tertiary);">staffed prototype \u00b7 config v${v.configVersion}</div></div>
+      <button onclick="App.openPages()" style="margin-left:auto;font-family:inherit;cursor:pointer;background:var(--system-white);border:2px solid var(--insight-black);color:var(--insight-black);font-weight:700;font-size:14px;padding:10px 18px;border-radius:999px;">pages &amp; content</button>
+      <button onclick="App.openBranding()" style="font-family:inherit;cursor:pointer;background:var(--system-white);border:2px solid var(--insight-black);color:var(--insight-black);font-weight:700;font-size:14px;padding:10px 18px;border-radius:999px;">branding</button>
+      <button onclick="App.openSettings()" style="font-family:inherit;cursor:pointer;background:var(--system-white);border:2px solid var(--insight-black);color:var(--insight-black);font-weight:700;font-size:14px;padding:10px 18px;border-radius:999px;">api keys</button>
+      <button onclick="App.exitAdmin()" style="font-family:inherit;cursor:pointer;background:var(--insight-black);color:var(--system-white);border:none;font-weight:700;font-size:15px;padding:11px 22px;border-radius:999px;">exit to kiosk \u2192</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:18px;flex-wrap:wrap;background:var(--system-white);border:1px solid color-mix(in srgb, var(--insight-black) 14%, transparent);border-radius:12px;padding:12px 16px;">
+      <span style="font-size:12px;font-weight:800;text-transform:lowercase;letter-spacing:.08em;color:var(--fg-tertiary);">surveys</span>
+      ${tabs}
+      <button onclick="App.addSurvey()" style="font-family:inherit;cursor:pointer;background:none;border:2px dashed color-mix(in srgb, var(--insight-black) 30%, transparent);color:var(--insight-black);font-weight:700;font-size:14px;padding:8px 16px;border-radius:999px;">+ new survey</button>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+        <input value="${esc(v.activeName)}" onchange="App.renameSurvey(this.value)" style="font-family:inherit;font-size:15px;font-weight:700;padding:9px 12px;border:2px solid color-mix(in srgb, var(--insight-black) 22%, transparent);border-radius:9px;background:var(--system-white);color:var(--insight-black);user-select:text;width:240px;box-sizing:border-box;" />
+        <button onclick="App.dupSurvey()" style="font-family:inherit;cursor:pointer;background:var(--system-white);border:2px solid var(--insight-black);color:var(--insight-black);font-weight:700;font-size:13px;padding:9px 14px;border-radius:999px;">duplicate</button>
+        ${delBtn}
       </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:22px;">
-        ${card("interactions",v.mInteractions,"38px")}${card("sessions",v.mSessions,"38px")}${card("video consents",v.mVideo,"38px")}${card("last export",v.mLastExport,"30px")}
-      </div>
-      <div style="display:flex;align-items:center;margin-top:24px;margin-bottom:12px;">
-        <div style="font-weight:800;font-size:18px;text-transform:lowercase;letter-spacing:.02em;">questions</div>
-        <button onclick="App.addQuestion()" style="margin-left:auto;font-family:inherit;cursor:pointer;background:var(--system-white);border:2px solid var(--insight-black);color:var(--insight-black);font-weight:700;font-size:15px;padding:10px 22px;border-radius:999px;">+ add question</button></div>
-      <div style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:10px;">${rows}</div>
-      <div style="display:flex;align-items:center;gap:18px;margin-top:16px;padding-top:16px;border-top:1px solid color-mix(in srgb, var(--insight-black) 14%, transparent);">
-        <div style="font-size:13px;color:var(--fg-muted);max-width:560px;line-height:1.4;">edits bump the config version; every response is tagged with the version so a mid-event change never silently mixes datasets.</div>
-        <button onclick="App.exportDecipher()" style="margin-left:auto;font-family:inherit;cursor:pointer;background:var(--measured-purple);color:var(--system-white);border:none;font-weight:800;font-size:17px;padding:14px 30px;border-radius:999px;">export Decipher file</button></div>
-    </div>`;
+    </div>
+    <div style="display:flex;align-items:center;margin-top:18px;margin-bottom:10px;"><div style="font-weight:800;font-size:18px;text-transform:lowercase;letter-spacing:.02em;">questions</div><button onclick="App.addQuestion()" style="margin-left:auto;font-family:inherit;cursor:pointer;background:var(--system-white);border:2px solid var(--insight-black);color:var(--insight-black);font-weight:700;font-size:15px;padding:10px 22px;border-radius:999px;">+ add question</button></div>
+    <div style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:10px;">${qrows}</div>
+    <div style="display:flex;align-items:center;gap:18px;margin-top:14px;padding-top:14px;border-top:1px solid color-mix(in srgb, var(--insight-black) 14%, transparent);"><div style="font-size:13px;color:var(--fg-muted);max-width:560px;line-height:1.4;">edits bump the config version; every response is tagged with the version and survey so a mid-event change never silently mixes datasets.</div><button onclick="App.exportDecipher()" style="margin-left:auto;font-family:inherit;cursor:pointer;background:var(--measured-purple);color:var(--system-white);border:none;font-weight:800;font-size:17px;padding:14px 30px;border-radius:999px;">export Decipher file</button></div>
+  </div>`;
   },
 
   scEditor(v){
+    const d=this.state.draft; if(!d) return "";
+    const editTitle=this.state.editIdx<0?"new question":"edit question";
+    const isSwipe=d.type==="swipe", isLikert=d.type==="likert", isMulti=d.type==="multi", isImage=d.type==="image";
+    const segOn="font-family:inherit;font-size:17px;font-weight:700;padding:12px 18px;border-radius:10px;cursor:pointer;border:2px solid var(--insight-black);background:var(--insight-black);color:var(--system-white);text-transform:lowercase;";
+    const segOff="font-family:inherit;font-size:17px;font-weight:700;padding:12px 18px;border-radius:10px;cursor:pointer;border:2px solid var(--insight-black);background:var(--system-white);color:var(--insight-black);text-transform:lowercase;";
+    const tgStyle=(on)=>`width:56px;height:30px;border-radius:999px;background:${on?"var(--insight-black)":"color-mix(in srgb, var(--insight-black) 20%, transparent)"};position:relative;cursor:pointer;border:none;flex:none;`;
+    const knob=(on)=>`position:absolute;top:3px;left:${on?"29px":"3px"};width:24px;height:24px;border-radius:50%;background:var(--system-white);transition:left .15s;`;
+    const inp=(val,onchange,extra)=>`<input value="${esc(val)}" onchange="${onchange}" ${extra||""} style="width:100%;box-sizing:border-box;font-family:inherit;font-size:16px;font-weight:600;padding:12px 14px;border:2px solid color-mix(in srgb, var(--insight-black) 30%, transparent);border-radius:9px;background:var(--system-white);color:var(--insight-black);user-select:text;" />`;
+
     let typeBlock="";
-    if(v.dIsSwipe){
-      typeBlock=`<div style="margin-top:20px;display:flex;gap:18px;max-width:640px;">
-        <div style="flex:1;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:8px;">swipe left label</div><input value="${esc(v.dNoLabel)}" oninput="App.setDraft({no:{key:'no',label:this.value}})" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:18px;font-weight:600;padding:13px 15px;border:2px solid color-mix(in srgb, var(--insight-black) 30%, transparent);border-radius:10px;background:var(--system-white);color:var(--insight-black);user-select:text;" /></div>
-        <div style="flex:1;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:8px;">swipe right label</div><input value="${esc(v.dYesLabel)}" oninput="App.setDraft({yes:{key:'yes',label:this.value}})" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:18px;font-weight:600;padding:13px 15px;border:2px solid color-mix(in srgb, var(--insight-black) 30%, transparent);border-radius:10px;background:var(--system-white);color:var(--insight-black);user-select:text;" /></div></div>`;
-    } else {
-      const sp=v.dScale.map(s=>`<div style="display:flex;flex-direction:column;gap:6px;width:150px;"><div style="font-weight:800;font-size:14px;color:var(--fg-tertiary);">point ${s.num}</div><input value="${esc(s.label)}" oninput="App.setDraftScale(${s.idx}, this.value)" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:16px;font-weight:600;padding:11px 13px;border:2px solid color-mix(in srgb, var(--insight-black) 30%, transparent);border-radius:9px;background:var(--system-white);color:var(--insight-black);user-select:text;" /></div>`).join("");
-      typeBlock=`<div style="margin-top:20px;"><div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);">scale points</div><button onclick="App.removeScalePoint()" style="font-family:inherit;cursor:pointer;width:38px;height:38px;border-radius:9px;border:2px solid var(--insight-black);background:var(--system-white);color:var(--insight-black);font-size:22px;font-weight:700;">−</button><button onclick="App.addScalePoint()" style="font-family:inherit;cursor:pointer;width:38px;height:38px;border-radius:9px;border:2px solid var(--insight-black);background:var(--system-white);color:var(--insight-black);font-size:22px;font-weight:700;">+</button></div><div style="display:flex;gap:10px;flex-wrap:wrap;">${sp}</div></div>`;
+    if(isSwipe){
+      typeBlock=`<div style="margin-top:18px;display:flex;gap:18px;max-width:640px;">
+        <div style="flex:1;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:8px;">swipe left label</div>${inp((d.no&&d.no.label)||"","App.setDraft({no:{key:'no',label:this.value}})")}</div>
+        <div style="flex:1;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:8px;">swipe right label</div>${inp((d.yes&&d.yes.label)||"","App.setDraft({yes:{key:'yes',label:this.value}})")}</div>
+      </div>`;
+    } else if(isLikert){
+      const isBtns=(d.likertMode||"buttons")==="buttons";
+      const modeBlock=`<div style="margin-top:18px;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:8px;">rating style</div><div style="display:flex;gap:10px;"><button onclick="App.setDraft({likertMode:'buttons'})" style="${isBtns?segOn:segOff}">button choices</button><button onclick="App.setDraft({likertMode:'slider'})" style="${!isBtns?segOn:segOff}">drag slider</button></div></div>`;
+      let cfg="";
+      if(isBtns){
+        const sps=(d.scale||[]).map((sp,idx)=>`<div style="display:flex;flex-direction:column;gap:6px;width:130px;"><div style="font-weight:800;font-size:14px;color:var(--fg-tertiary);">rating ${idx+1}</div><input value="${esc(sp.label)}" onchange="App.setDraftScale(${idx}, this.value)" placeholder="sublabel" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:15px;font-weight:600;padding:10px 12px;border:2px solid color-mix(in srgb, var(--insight-black) 30%, transparent);border-radius:9px;background:var(--system-white);color:var(--insight-black);user-select:text;" /></div>`).join("");
+        cfg=`<div style="margin-top:18px;"><div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);">scale points (${(d.scale||[]).length} \u00b7 3\u201311) \u2014 sublabel optional</div><button onclick="App.removeScalePoint()" style="font-family:inherit;cursor:pointer;width:38px;height:38px;border-radius:9px;border:2px solid var(--insight-black);background:var(--system-white);color:var(--insight-black);font-size:22px;font-weight:700;">\u2212</button><button onclick="App.addScalePoint()" style="font-family:inherit;cursor:pointer;width:38px;height:38px;border-radius:9px;border:2px solid var(--insight-black);background:var(--system-white);color:var(--insight-black);font-size:22px;font-weight:700;">+</button></div><div style="display:flex;gap:10px;flex-wrap:wrap;">${sps}</div></div>`;
+      } else {
+        const ranges=["1-5","1-7","1-10","0-10","0-100"].map(rg=>`<button onclick="App.setDraft({sliderRange:'${rg}'})" style="${(d.sliderRange||"1-5")===rg?segOn:segOff}">${rg}</button>`).join("");
+        const sl=d.sliderLabels||{};
+        cfg=`<div style="margin-top:18px;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:8px;">scale range</div><div style="display:flex;gap:10px;flex-wrap:wrap;">${ranges}</div></div>
+          <div style="margin-top:18px;display:flex;gap:14px;max-width:760px;">
+            <div style="flex:1;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:8px;">left label</div>${inp(sl.left||"","App.setSliderLabel('left',this.value)",'placeholder="e.g. not great"')}</div>
+            <div style="flex:1;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:8px;">centre label</div>${inp(sl.center||"","App.setSliderLabel('center',this.value)",'placeholder="optional"')}</div>
+            <div style="flex:1;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:8px;">right label</div>${inp(sl.right||"","App.setSliderLabel('right',this.value)",'placeholder="e.g. amazing"')}</div>
+          </div>`;
+      }
+      typeBlock=modeBlock+cfg;
+    } else if(isMulti){
+      const opts=(d.options||[]).map((op,idx)=>`<div style="display:flex;align-items:center;gap:10px;"><div style="font-weight:800;font-size:14px;color:var(--fg-tertiary);width:20px;">${idx+1}</div><input value="${esc(op.label)}" onchange="App.setDraftOpt(${idx},'label',this.value)" style="flex:1;box-sizing:border-box;font-family:inherit;font-size:17px;font-weight:600;padding:12px 14px;border:2px solid color-mix(in srgb, var(--insight-black) 30%, transparent);border-radius:9px;background:var(--system-white);color:var(--insight-black);user-select:text;" /><button onclick="App.delOption(${idx})" style="font-family:inherit;cursor:pointer;background:none;border:none;color:var(--index-red);font-weight:700;font-size:14px;">remove</button></div>`).join("");
+      typeBlock=`<div style="margin-top:18px;display:flex;align-items:center;gap:14px;"><button onclick="App.setDraft({multiSelect:${!d.multiSelect}})" style="${tgStyle(!!d.multiSelect)}"><span style="${knob(!!d.multiSelect)}"></span></button><div><div style="font-weight:700;font-size:16px;">allow multiple selections</div><div style="font-size:13px;color:var(--fg-tertiary);">"select all that apply" \u2014 respondents pick more than one</div></div></div>
+        <div style="margin-top:18px;"><div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);">choices (${(d.options||[]).length})</div><button onclick="App.addOption()" style="font-family:inherit;cursor:pointer;background:var(--system-white);border:2px solid var(--insight-black);color:var(--insight-black);font-weight:700;font-size:14px;padding:8px 16px;border-radius:999px;">+ add choice</button></div><div style="display:flex;flex-direction:column;gap:10px;max-width:680px;">${opts}</div></div>`;
+    } else if(isImage){
+      const cards=(d.options||[]).map((op,idx)=>{ const thumb=`<div style="width:100%;height:90px;border-radius:8px;overflow:hidden;background:color-mix(in srgb, var(--insight-black) 6%, transparent);display:flex;align-items:center;justify-content:center;border:2px dashed color-mix(in srgb, var(--insight-black) 22%, transparent);">${(typeof op.img==="string"&&op.img)?`<img src="${esc(op.img)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">`:`<span style="font-size:12px;color:var(--fg-muted);text-transform:lowercase;">+ upload</span>`}</div>`;
+        return `<div style="display:flex;flex-direction:column;gap:8px;background:var(--system-white);border:1px solid color-mix(in srgb, var(--insight-black) 16%, transparent);border-radius:10px;padding:10px;"><label style="cursor:pointer;display:block;">${thumb}<input type="file" accept="image/png,image/jpeg" onchange="App.onOptImg(${idx}, this)" style="display:none;" /></label><input value="${esc(op.label)}" onchange="App.setDraftOpt(${idx},'label',this.value)" placeholder="label" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;font-weight:600;padding:9px 11px;border:2px solid color-mix(in srgb, var(--insight-black) 30%, transparent);border-radius:8px;background:var(--system-white);color:var(--insight-black);user-select:text;" /><button onclick="App.delOption(${idx})" style="font-family:inherit;cursor:pointer;background:none;border:none;color:var(--index-red);font-weight:700;font-size:13px;">remove</button></div>`; }).join("");
+      typeBlock=`<div style="margin-top:18px;"><div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);">image cards (${(d.options||[]).length}) \u2014 upload JPEG / PNG</div><button onclick="App.addOption()" style="font-family:inherit;cursor:pointer;background:var(--system-white);border:2px solid var(--insight-black);color:var(--insight-black);font-weight:700;font-size:14px;padding:8px 16px;border-radius:999px;">+ add card</button></div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;max-width:760px;">${cards}</div></div>`;
     }
+
+    // conditional logic
+    let condBlock="";
+    const hasCond=!!d.cond;
+    if(hasCond){
+      const cands=this.condCandidates();
+      const condQs=cands.map(c=>`<option value="${esc(c.id)}" ${d.cond.qId===c.id?"selected":""}>${esc("q"+(this.cur().questions.indexOf(c)+1)+": "+((c.text||"").slice(0,38)))}</option>`).join("");
+      const condVals=(d.cond&&d.cond.qId?this.condValuesFor(d.cond.qId):[]).map(cv=>`<option value="${esc(cv.key)}" ${d.cond.value===cv.key?"selected":""}>${esc(cv.label||cv.key)}</option>`).join("");
+      const noCond=cands.length===0?`<div style="margin-top:10px;font-size:14px;color:var(--index-red);">add a swipe / button / choice question before this one to branch on.</div>`:"";
+      condBlock=`<div style="display:flex;gap:12px;margin-top:14px;align-items:center;flex-wrap:wrap;"><span style="font-weight:800;font-size:16px;">show if</span><select onchange="App.setCondQid(this.value)" style="font-family:inherit;font-size:16px;font-weight:600;padding:11px 14px;border:2px solid color-mix(in srgb, var(--insight-black) 30%, transparent);border-radius:9px;background:var(--system-white);color:var(--insight-black);max-width:420px;">${condQs}</select><span style="font-weight:800;font-size:16px;">equals</span><select onchange="App.setCondVal(this.value)" style="font-family:inherit;font-size:16px;font-weight:600;padding:11px 14px;border:2px solid color-mix(in srgb, var(--insight-black) 30%, transparent);border-radius:9px;background:var(--system-white);color:var(--insight-black);">${condVals}</select></div>${noCond}`;
+    }
+
     return `
-    <div style="position:absolute;inset:0;background:var(--bg-subtle,#f1efe9);color:var(--insight-black);display:flex;flex-direction:column;padding:32px 52px;box-sizing:border-box;overflow:auto;">
-      <div style="display:flex;align-items:center;gap:16px;">
-        <button onclick="App.cancelEdit()" style="font-family:inherit;cursor:pointer;background:none;border:none;color:var(--fg-secondary);font-size:16px;font-weight:600;">← back</button>
-        <div style="font-weight:800;font-size:25px;letter-spacing:-.02em;">${esc(v.editTitle)}</div>
-        <span style="margin-left:auto;font-size:12px;font-weight:700;background:var(--insight-black);color:var(--system-white);padding:5px 12px;border-radius:999px;">config v${v.configVersion}</span></div>
-      <div style="margin-top:22px;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:8px;">question wording</div>
-        <input value="${esc(v.dText)}" oninput="App.setDraft({text:this.value})" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:23px;font-weight:600;padding:15px 18px;border:2px solid var(--insight-black);border-radius:10px;background:var(--system-white);color:var(--insight-black);user-select:text;" /></div>
-      <div style="margin-top:20px;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:8px;">interaction type</div>
-        <div style="display:flex;gap:12px;max-width:440px;"><button onclick="App.setDraft({type:'swipe'})" style="${styleStr(v.swipeTabStyle)}">binary swipe</button><button onclick="App.setDraft({type:'likert'})" style="${styleStr(v.likertTabStyle)}">likert / rating</button></div></div>
-      ${typeBlock}
-      <div style="margin-top:24px;display:flex;gap:48px;flex-wrap:wrap;align-items:center;">
-        <div style="display:flex;align-items:center;gap:14px;"><button onclick="App.setDraft({randomize:${!v.dRandomize}})" style="${styleStr(v.randomTgStyle)}"><span style="${styleStr(v.randomKnob)}"></span></button><div><div style="font-weight:700;font-size:16px;">randomise option order</div><div style="font-size:13px;color:var(--fg-tertiary);">logs the order shown per response</div></div></div>
-        <div style="display:flex;align-items:center;gap:14px;"><button onclick="App.setDraft({showDist:${!v.dShowDist}})" style="${styleStr(v.distTgStyle)}"><span style="${styleStr(v.distKnob)}"></span></button><div><div style="font-weight:700;font-size:16px;">show live distribution</div><div style="font-size:13px;color:var(--fg-tertiary);">the mentimeter-style reveal</div></div></div>
-        <div style="display:flex;align-items:center;gap:14px;"><div><div style="font-weight:700;font-size:16px;">min responses before %</div><div style="font-size:13px;color:var(--fg-tertiary);">small-n suppression</div></div>
-          <div style="display:flex;align-items:center;gap:10px;"><button onclick="App.setDraft({minN:Math.max(0,${v.dMinN}-1)})" style="font-family:inherit;cursor:pointer;width:40px;height:40px;border-radius:10px;border:2px solid var(--insight-black);background:var(--system-white);color:var(--insight-black);font-size:22px;font-weight:700;">−</button><span style="font-weight:900;font-size:24px;min-width:30px;text-align:center;">${v.dMinN}</span><button onclick="App.setDraft({minN:Math.min(50,${v.dMinN}+1)})" style="font-family:inherit;cursor:pointer;width:40px;height:40px;border-radius:10px;border:2px solid var(--insight-black);background:var(--system-white);color:var(--insight-black);font-size:22px;font-weight:700;">+</button></div></div>
-      </div>
-      <div style="margin-top:auto;padding-top:22px;display:flex;gap:16px;">
-        <button onclick="App.saveQuestion()" style="font-family:inherit;cursor:pointer;background:var(--insight-black);color:var(--system-white);border:none;font-weight:800;font-size:20px;padding:16px 44px;border-radius:999px;">save question</button>
-        <button onclick="App.cancelEdit()" style="font-family:inherit;cursor:pointer;background:none;border:2px solid var(--insight-black);color:var(--insight-black);font-weight:700;font-size:20px;padding:16px 36px;border-radius:999px;">cancel</button></div>
-    </div>`;
+  <div style="position:absolute;inset:0;background:var(--bg-subtle);color:var(--insight-black);display:flex;flex-direction:column;padding:28px 48px;box-sizing:border-box;overflow:auto;">
+    <div style="display:flex;align-items:center;gap:16px;"><button onclick="App.cancelEdit()" style="font-family:inherit;cursor:pointer;background:none;border:none;color:var(--fg-secondary);font-size:16px;font-weight:600;">\u2190 back</button><div style="font-weight:800;font-size:25px;letter-spacing:-.02em;">${editTitle}</div><span style="margin-left:auto;font-size:12px;font-weight:700;background:var(--insight-black);color:var(--system-white);padding:5px 12px;border-radius:999px;">config v${v.configVersion}</span></div>
+    <div style="margin-top:20px;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:8px;">question wording</div><input value="${esc(d.text)}" onchange="App.setDraft({text:this.value})" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:22px;font-weight:600;padding:14px 16px;border:2px solid var(--insight-black);border-radius:10px;background:var(--system-white);color:var(--insight-black);user-select:text;" /></div>
+    <div style="margin-top:18px;"><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:8px;">interaction type</div><div style="display:flex;gap:10px;flex-wrap:wrap;"><button onclick="App.setType('swipe')" style="${isSwipe?segOn:segOff}">binary swipe</button><button onclick="App.setType('likert')" style="${isLikert?segOn:segOff}">likert / rating</button><button onclick="App.setType('multi')" style="${isMulti?segOn:segOff}">multiple choice</button><button onclick="App.setType('image')" style="${isImage?segOn:segOff}">image cards</button></div></div>
+    ${typeBlock}
+    <div style="margin-top:22px;padding-top:18px;border-top:1px solid color-mix(in srgb, var(--insight-black) 12%, transparent);"><div style="display:flex;align-items:center;gap:14px;"><button onclick="App.toggleCond()" style="${tgStyle(hasCond)}"><span style="${knob(hasCond)}"></span></button><div><div style="font-weight:700;font-size:16px;">show only if a previous answer matches</div><div style="font-size:13px;color:var(--fg-tertiary);">skips this question unless the condition is met in the session</div></div></div>${condBlock}</div>
+    <div style="margin-top:22px;display:flex;gap:40px;flex-wrap:wrap;align-items:center;">
+      <div style="display:flex;align-items:center;gap:14px;"><button onclick="App.setDraft({randomize:${!d.randomize}})" style="${tgStyle(!!d.randomize)}"><span style="${knob(!!d.randomize)}"></span></button><div><div style="font-weight:700;font-size:16px;">randomise option order</div><div style="font-size:13px;color:var(--fg-tertiary);">shuffles per response &amp; logs the order shown</div></div></div>
+      <div style="display:flex;align-items:center;gap:14px;"><button onclick="App.setDraft({showDist:${!(d.showDist!==false)}})" style="${tgStyle(d.showDist!==false)}"><span style="${knob(d.showDist!==false)}"></span></button><div><div style="font-weight:700;font-size:16px;">show live distribution</div><div style="font-size:13px;color:var(--fg-tertiary);">the live reveal screen</div></div></div>
+      <div style="display:flex;align-items:center;gap:14px;"><div><div style="font-weight:700;font-size:16px;">min responses before %</div><div style="font-size:13px;color:var(--fg-tertiary);">small-n suppression</div></div><div style="display:flex;align-items:center;gap:10px;"><button onclick="App.minNDown()" style="font-family:inherit;cursor:pointer;width:40px;height:40px;border-radius:10px;border:2px solid var(--insight-black);background:var(--system-white);color:var(--insight-black);font-size:22px;font-weight:700;">\u2212</button><span style="font-weight:900;font-size:24px;min-width:30px;text-align:center;">${d.minN!=null?d.minN:5}</span><button onclick="App.minNUp()" style="font-family:inherit;cursor:pointer;width:40px;height:40px;border-radius:10px;border:2px solid var(--insight-black);background:var(--system-white);color:var(--insight-black);font-size:22px;font-weight:700;">+</button></div></div>
+    </div>
+    <div style="margin-top:24px;padding-top:20px;display:flex;gap:16px;"><button onclick="App.saveQuestion()" style="font-family:inherit;cursor:pointer;background:var(--insight-black);color:var(--system-white);border:none;font-weight:800;font-size:20px;padding:16px 44px;border-radius:999px;">save question</button><button onclick="App.cancelEdit()" style="font-family:inherit;cursor:pointer;background:none;border:2px solid var(--insight-black);color:var(--insight-black);font-weight:700;font-size:20px;padding:16px 36px;border-radius:999px;">cancel</button></div>
+  </div>`;
   },
 
-  scIdle(v){ return `
+  scPages(v){
+    const tx=v.tx, P=v.survey.pages||{};
+    const bcols=["var(--anchor-green)","var(--metric-blue)","var(--vector-orange)","var(--signal-yellow)"];
+    const toggleStyle=(on)=>`font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:10px;font-weight:800;font-size:16px;padding:12px 20px;border-radius:999px;border:2px solid ${on?"var(--anchor-green)":"color-mix(in srgb, var(--insight-black) 24%, transparent)"};background:${on?"var(--anchor-green)":"var(--system-white)"};color:${on?"#0e2018":"var(--fg-tertiary)"};`;
+    const radio=(on)=>`width:16px;height:16px;border-radius:50%;border:2px solid ${on?"#0e2018":"color-mix(in srgb, var(--insight-black) 40%, transparent)"};background:${on?"#0e2018":"transparent"};display:inline-block;box-sizing:border-box;`;
+    const toggles=[ {f:"consent", label:"before we start"}, {f:"video", label:"camera opt-in"}, {f:"recruit", label:"saskwatch sign-up"}, {f:"thanks", label:"thank you"} ]
+      .map(it=>{ const on=!!P[it.f]; return `<button onclick="App.setPage('${it.f}', ${!on})" style="${toggleStyle(on)}"><span style="${radio(on)}"></span>${it.label}</button>`; }).join("");
+    const field=(label,f)=>`<div><div style="font-size:12px;font-weight:700;color:var(--fg-tertiary);margin-bottom:5px;">${label}</div><input value="${esc(tx[f]||"")}" onchange="App.setText('${f}', this.value)" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:16px;font-weight:600;padding:11px 13px;border:2px solid color-mix(in srgb, var(--insight-black) 26%, transparent);border-radius:9px;background:var(--system-white);color:var(--insight-black);user-select:text;" /></div>`;
+    const sections=[
+      { title:"attract screen", fields:[field("eyebrow","attractEyebrow"),field("headline","attractTitle"),field("subtext","attractSub")] },
+      { title:"before we start (consent)", fields:[field("eyebrow","consentEyebrow"),field("title","consentTitle"),field("start button","consentCta"),field("decline link","consentDecline")] },
+      { title:"camera opt-in", fields:[field("eyebrow","videoEyebrow"),field("title","videoTitle"),field("body","videoBody"),field("yes button","videoYes"),field("no button","videoNo")] },
+      { title:"saskwatch sign-up", fields:[field("eyebrow","recruitEyebrow"),field("title","recruitTitle"),field("body","recruitBody"),field("finish button","recruitCta"),field("panel title","recruitPanelTitle"),field("panel sub","recruitPanelSub")] },
+      { title:"thank you", fields:[field("title","thanksTitle"),field("body","thanksBody")] }
+    ].map(s=>`<div style="margin-top:26px;"><div style="font-size:14px;font-weight:800;text-transform:lowercase;letter-spacing:.06em;color:var(--insight-black);margin-bottom:12px;border-bottom:2px solid color-mix(in srgb, var(--insight-black) 14%, transparent);padding-bottom:7px;">${s.title}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">${s.fields.join("")}</div></div>`).join("");
+    const bullets=(tx.bullets||[]).map((b,i)=>`<div style="display:flex;gap:10px;align-items:center;"><span style="flex:none;width:14px;height:14px;border-radius:50%;background:${bcols[i%bcols.length]};"></span><input value="${esc(b.bold)}" onchange="App.setBullet(${i},'bold',this.value)" placeholder="lead-in" style="width:220px;box-sizing:border-box;font-family:inherit;font-size:15px;font-weight:800;padding:10px 12px;border:2px solid color-mix(in srgb, var(--insight-black) 26%, transparent);border-radius:9px;background:var(--system-white);color:var(--insight-black);user-select:text;" /><input value="${esc(b.text)}" onchange="App.setBullet(${i},'text',this.value)" placeholder="rest of the point" style="flex:1;box-sizing:border-box;font-family:inherit;font-size:15px;font-weight:500;padding:10px 12px;border:2px solid color-mix(in srgb, var(--insight-black) 26%, transparent);border-radius:9px;background:var(--system-white);color:var(--insight-black);user-select:text;" /></div>`).join("");
+    return `
+  <div style="position:absolute;inset:0;background:var(--bg-subtle);color:var(--insight-black);display:flex;flex-direction:column;padding:28px 48px;box-sizing:border-box;overflow:auto;">
+    <div style="display:flex;align-items:center;gap:16px;"><button onclick="App.openAdmin()" style="font-family:inherit;cursor:pointer;background:none;border:none;color:var(--fg-secondary);font-size:16px;font-weight:600;">\u2190 back</button><div style="font-weight:800;font-size:25px;letter-spacing:-.02em;">pages &amp; content \u2014 ${esc(v.activeName)}</div></div>
+    <div style="font-size:13px;font-weight:800;text-transform:lowercase;letter-spacing:.06em;color:var(--fg-tertiary);margin-top:22px;margin-bottom:10px;">visible pages</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">${toggles}</div>
+    ${sections}
+    <div style="font-size:13px;font-weight:800;text-transform:lowercase;letter-spacing:.06em;color:var(--fg-tertiary);margin-top:24px;margin-bottom:10px;">"before we start" points</div>
+    <div style="display:flex;flex-direction:column;gap:10px;max-width:880px;">${bullets}</div>
+    <div style="margin-top:24px;padding-top:18px;display:flex;gap:16px;align-items:center;"><button onclick="App.openAdmin()" style="font-family:inherit;cursor:pointer;background:var(--insight-black);color:var(--system-white);border:none;font-weight:800;font-size:20px;padding:15px 44px;border-radius:999px;">done</button><span style="font-size:14px;color:var(--fg-muted);">changes save automatically to this survey.</span></div>
+  </div>`;
+  },
+
+  scBranding(v){
+    const primary=v.primary, accent=v.accent, button=v.button;
+    const logoBox=v.hasLogo ? this.logoImg(v.logo,"max-width:90%;max-height:80%;object-fit:contain;") : `<span style="font-size:14px;color:var(--fg-muted);text-transform:lowercase;">+ upload logo</span>`;
+    const removeLogo=v.hasLogo?`<button onclick="App.clearLogo()" style="font-family:inherit;cursor:pointer;background:none;border:none;color:var(--index-red);font-weight:700;font-size:15px;">remove logo</button>`:"";
+    const colorField=(label,f,val)=>`<div style="display:flex;flex-direction:column;gap:8px;"><div style="font-size:13px;font-weight:700;color:var(--fg-tertiary);">${label}</div><div style="display:flex;align-items:center;gap:10px;"><input type="color" value="${esc(val)}" onchange="App.setBrand('${f}', this.value)" style="width:54px;height:46px;border:2px solid color-mix(in srgb, var(--insight-black) 22%, transparent);border-radius:10px;background:var(--system-white);cursor:pointer;padding:2px;" /><input value="${esc(val)}" onchange="App.setBrand('${f}', this.value)" style="width:120px;box-sizing:border-box;font-family:ui-monospace,Menlo,monospace;font-size:16px;font-weight:600;padding:11px 12px;border:2px solid color-mix(in srgb, var(--insight-black) 26%, transparent);border-radius:9px;background:var(--system-white);color:var(--insight-black);user-select:text;" /></div></div>`;
+    return `
+  <div style="position:absolute;inset:0;background:var(--bg-subtle);color:var(--insight-black);display:flex;flex-direction:column;padding:28px 48px;box-sizing:border-box;overflow:auto;">
+    <div style="display:flex;align-items:center;gap:16px;"><button onclick="App.openAdmin()" style="font-family:inherit;cursor:pointer;background:none;border:none;color:var(--fg-secondary);font-size:16px;font-weight:600;">\u2190 back</button><div style="font-weight:800;font-size:25px;letter-spacing:-.02em;">branding \u2014 ${esc(v.activeName)}</div></div>
+    <div style="font-size:15px;color:var(--fg-tertiary);margin-top:8px;max-width:64ch;line-height:1.4;">brand this survey for a client. the logo replaces the SaskWatch placement on the consent &amp; sign-up screens; colours theme the kiosk buttons and highlights.</div>
+    <div style="font-size:13px;font-weight:800;text-transform:lowercase;letter-spacing:.06em;color:var(--fg-tertiary);margin-top:24px;margin-bottom:10px;">client logo (JPEG / PNG)</div>
+    <div style="display:flex;align-items:center;gap:18px;"><label style="cursor:pointer;"><div style="width:220px;height:96px;border:2px dashed color-mix(in srgb, var(--insight-black) 30%, transparent);border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--system-white);overflow:hidden;">${logoBox}</div><input type="file" accept="image/png,image/jpeg" onchange="App.onLogoFile(this)" style="display:none;" /></label>${removeLogo}</div>
+    <div style="font-size:13px;font-weight:800;text-transform:lowercase;letter-spacing:.06em;color:var(--fg-tertiary);margin-top:26px;margin-bottom:10px;">colours (hex)</div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;">${colorField("primary (dark panels)","primary",primary)}${colorField("accent (highlights)","accent",accent)}${colorField("buttons","button",button)}<div style="display:flex;flex-direction:column;gap:8px;"><div style="font-size:13px;font-weight:700;color:var(--fg-tertiary);">preview</div><div style="display:flex;align-items:center;gap:10px;"><span style="width:46px;height:46px;border-radius:50%;background:${accent};border:2px solid color-mix(in srgb, var(--insight-black) 16%, transparent);"></span><button style="font-family:inherit;background:${button};color:${v.onButton};border:none;font-weight:800;font-size:16px;padding:12px 24px;border-radius:999px;">button</button></div></div></div>
+    <div style="margin-top:auto;padding-top:22px;display:flex;gap:16px;align-items:center;"><button onclick="App.resetBranding()" style="font-family:inherit;cursor:pointer;background:none;border:2px solid var(--insight-black);color:var(--insight-black);font-weight:700;font-size:18px;padding:13px 30px;border-radius:999px;">reset to insightrix default</button><button onclick="App.openAdmin()" style="font-family:inherit;cursor:pointer;background:var(--insight-black);color:var(--system-white);border:none;font-weight:800;font-size:20px;padding:14px 44px;border-radius:999px;">done</button></div>
+  </div>`;
+  },
+
+  scSettings(v){
+    const S=this.state.settings||{};
+    const saved=this.state.settingsSaved?`<span style="color:var(--anchor-green);font-weight:700;font-size:16px;">saved \u2713</span>`:"";
+    const keyInput=(val,onchange,ph)=>`<input value="${esc(val)}" onchange="${onchange}" placeholder="${ph}" style="width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,monospace;font-size:17px;font-weight:500;padding:14px 16px;border:2px solid color-mix(in srgb, var(--insight-black) 30%, transparent);border-radius:10px;background:var(--system-white);color:var(--insight-black);user-select:text;" />`;
+    return `
+  <div style="position:absolute;inset:0;background:var(--bg-subtle);color:var(--insight-black);display:flex;flex-direction:column;padding:36px 52px;box-sizing:border-box;overflow:auto;">
+    <div style="display:flex;align-items:center;gap:16px;"><button onclick="App.openAdmin()" style="font-family:inherit;cursor:pointer;background:none;border:none;color:var(--fg-secondary);font-size:16px;font-weight:600;">\u2190 back</button><div style="font-weight:800;font-size:25px;letter-spacing:-.02em;">api keys</div><span style="margin-left:12px;font-size:12px;font-weight:700;background:var(--measured-purple);color:var(--system-white);padding:5px 12px;border-radius:999px;">universal \u00b7 all surveys</span></div>
+    <div style="font-size:15px;color:var(--fg-tertiary);margin-top:8px;max-width:64ch;line-height:1.4;">these keys apply across every survey on this device. they're stored locally and used by the app's outbound integrations. keep endpoints in a Canadian region for data residency.</div>
+    <div style="margin-top:24px;max-width:720px;display:flex;flex-direction:column;gap:22px;">
+      <div><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:6px;">sms distribution api key</div>${keyInput(S.smsKey||"","App.setSetting('smsKey', this.value)","sk_sms_\u2026")}<div style="font-size:13px;color:var(--fg-muted);margin-top:6px;">authenticates sending the sign-up link by text.</div></div>
+      <div><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:6px;">data-out api key</div>${keyInput(S.dataKey||"","App.setSetting('dataKey', this.value)","sk_data_\u2026")}<div style="font-size:13px;color:var(--fg-muted);margin-top:6px;">authenticates the outbound feed of operational metadata and exports.</div></div>
+      <div><div style="font-size:13px;font-weight:700;text-transform:lowercase;letter-spacing:.04em;color:var(--fg-tertiary);margin-bottom:6px;">data-out endpoint url <span style="opacity:.6;">(optional)</span></div>${keyInput(S.dataUrl||"","App.setSetting('dataUrl', this.value)","https://\u2026.ca/ingest")}<div style="font-size:13px;color:var(--fg-muted);margin-top:6px;">Canadian-region endpoint that receives the metadata heartbeat and exports.</div></div>
+    </div>
+    <div style="margin-top:auto;padding-top:22px;display:flex;gap:16px;align-items:center;"><button onclick="App.saveSettings()" style="font-family:inherit;cursor:pointer;background:var(--insight-black);color:var(--system-white);border:none;font-weight:800;font-size:20px;padding:16px 44px;border-radius:999px;">save keys</button><button onclick="App.openAdmin()" style="font-family:inherit;cursor:pointer;background:none;border:2px solid var(--insight-black);color:var(--insight-black);font-weight:700;font-size:20px;padding:16px 36px;border-radius:999px;">cancel</button>${saved}</div>
+  </div>`;
+  },
+
+  scIdle(v){
+    return `
   <div style="position:absolute;inset:0;background:rgba(13,21,24,.88);color:var(--system-white);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:50;text-align:center;">
     <div style="font-weight:900;font-size:64px;letter-spacing:-.03em;">still there?</div>
     <div style="font-size:24px;font-weight:300;opacity:.8;margin-top:16px;">resetting for the next person in ${v.warnLeft}s</div>
     <button onclick="App.stayActive()" style="margin-top:42px;font-family:inherit;cursor:pointer;background:var(--signal-yellow);color:var(--insight-black);border:none;font-weight:800;font-size:24px;padding:20px 56px;border-radius:999px;">i'm still here</button>
-  </div>`; }
+  </div>`;
+  }
 };
 
 App.init();
